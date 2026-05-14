@@ -30,6 +30,11 @@ void treadmill_ctrl_toggle(void)
 
 void treadmill_ctrl_speed_up(void)
 {
+    if (!s_running) {
+        ESP_LOGW(TAG, "Treadmill chưa bật, bỏ qua SPEED_UP");
+        return;
+    }
+
     int rc = ble_client_write_command(TREADMILL_CMD_SPEED_UP);
     if (rc == 0) {
         ESP_LOGI(TAG, "Lệnh: TĂNG TỐC");
@@ -38,6 +43,11 @@ void treadmill_ctrl_speed_up(void)
 
 void treadmill_ctrl_speed_down(void)
 {
+     if (!s_running) {
+        ESP_LOGW(TAG, "Treadmill chưa bật, bỏ qua SPEED_DOWN");
+        return;
+    }
+    
     int rc = ble_client_write_command(TREADMILL_CMD_SPEED_DOWN);
     if (rc == 0) {
         ESP_LOGI(TAG, "Lệnh: GIẢM TỐC");

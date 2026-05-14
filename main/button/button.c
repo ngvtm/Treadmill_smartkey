@@ -7,7 +7,7 @@
 
 #define TAG              "BUTTON"
 #define DEBOUNCE_MS      50
-#define BTN_TASK_STACK   2048
+#define BTN_TASK_STACK   4096
 #define BTN_TASK_PRIO    10
 
 /* Mapping button_id_t -> GPIO number */
