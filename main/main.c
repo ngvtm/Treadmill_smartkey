@@ -277,6 +277,23 @@ blecent_gap_event(struct ble_gap_event *event, void *arg)
                     event->mtu.conn_handle,
                     event->mtu.value);
         return 0;
+
+    case BLE_GAP_EVENT_NOTIFY_RX: {
+        uint8_t buf[sizeof(treadmill_status_msg_t)];
+        uint16_t len = 0;
+
+        rc = ble_hs_mbuf_to_flat(event->notify_rx.om,
+                                 buf,
+                                 sizeof(buf),
+                                 &len);
+        if (rc != 0) {
+            MODLOG_DFLT(ERROR, "notify_rx parse failed rc=%d\n", rc);
+            return 0;
+        }
+
+        treadmill_ctrl_handle_status(buf, len);
+        return 0;
+    }
 #endif
     }
     return 0;
