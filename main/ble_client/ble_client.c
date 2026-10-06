@@ -1,4 +1,5 @@
 #include "ble_client.h"
+#include "lcd/lcd_display.h"
 #include "host/ble_gatt.h"
 #include "modlog/modlog.h"
 
@@ -16,6 +17,7 @@ void ble_client_set_connection(uint16_t conn_handle, uint16_t chr_val_handle)
 {
     s_conn_handle    = conn_handle;
     s_chr_val_handle = chr_val_handle;
+    lcd_display_set_link(LCD_LINK_CONNECTED);
     MODLOG_DFLT(INFO, "ble_client: ready — conn_handle=%d chr_val_handle=%d\n",
                 conn_handle, chr_val_handle);
 }
@@ -24,6 +26,7 @@ void ble_client_clear_connection(void)
 {
     s_conn_handle    = BLE_HS_CONN_HANDLE_NONE;
     s_chr_val_handle = 0;
+    lcd_display_set_link(LCD_LINK_DISCONNECTED);
     MODLOG_DFLT(INFO, "ble_client: connection cleared\n");
 }
 

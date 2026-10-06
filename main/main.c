@@ -11,6 +11,7 @@
 #include "ble_client/ble_client.h"
 #include "treadmill_ctrl/treadmill_ctrl.h"
 #include "button/button.h"
+#include "lcd/lcd_display.h"
 
 static const char *tag = "NimBLE_BLE_CENT";
 static int blecent_gap_event(struct ble_gap_event *event, void *arg);
@@ -145,6 +146,9 @@ blecent_scan(void)
                       blecent_gap_event, NULL);
     if (rc != 0) {
         MODLOG_DFLT(ERROR, "Error initiating GAP discovery; rc=%d\n", rc);
+        lcd_display_set_link(LCD_LINK_DISCONNECTED);
+    } else {
+        lcd_display_set_link(LCD_LINK_SCANNING);
     }
 }
 
@@ -195,14 +199,22 @@ blecent_connect_if_interesting(void *disc)
 
     addr = &((struct ble_gap_disc_desc *)disc)->addr;
 
-    /* Connection params thoải mái để tránh lỗi 574 */
+    /*
+     * Service discovery là chuỗi hàng chục lượt hỏi-đáp ATT, mỗi lượt tốn
+     * ít nhất một connection interval. Ở 80-100 ms thì toàn bộ quá trình
+     * mất hơn 15 giây, vượt xa supervision timeout 4 giây -> link chết
+     * giữa chừng và discovery trả về BLE_HS_ENOTCONN (status=7).
+     *
+     * 15-30 ms rút thời gian discovery xuống còn khoảng một phần năm, và
+     * timeout 10 giây cho phép peer chậm vẫn kịp trả lời.
+     */
     struct ble_gap_conn_params conn_params = {
         .scan_itvl           = 0x0010,
         .scan_window         = 0x0010,
-        .itvl_min            = BLE_GAP_CONN_ITVL_MS(80),
-        .itvl_max            = BLE_GAP_CONN_ITVL_MS(100),
+        .itvl_min            = BLE_GAP_CONN_ITVL_MS(15),
+        .itvl_max            = BLE_GAP_CONN_ITVL_MS(30),
         .latency             = 0,
-        .supervision_timeout = BLE_GAP_SUPERVISION_TIMEOUT_MS(4000),
+        .supervision_timeout = BLE_GAP_SUPERVISION_TIMEOUT_MS(10000),
         .min_ce_len          = 0,
         .max_ce_len          = 0,
     };
@@ -336,6 +348,15 @@ app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
+    /* Bật màn hình trước BLE để có phản hồi ngay khi cấp nguồn.
+     * Lỗi màn hình không được chặn phần điều khiển: smartkey vẫn phải
+     * bấm nút gửi lệnh được. */
+    ret = lcd_display_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(tag, "LCD init failed (%s), chay tiep khong co man hinh",
+                 esp_err_to_name(ret));
+    }
 
     ret = nimble_port_init();
     if (ret != ESP_OK) {

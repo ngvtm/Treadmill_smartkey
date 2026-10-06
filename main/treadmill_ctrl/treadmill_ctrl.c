@@ -1,5 +1,6 @@
 #include "treadmill_ctrl.h"
 #include "ble_client/ble_client.h"
+#include "lcd/lcd_display.h"
 #include "esp_log.h"
 
 #define TAG "TREADMILL_CTRL"
@@ -9,7 +10,23 @@ static bool s_server_running = false;
 static uint8_t s_server_speed = 0;
 static uint8_t s_server_requested_speed = 0;
 static uint8_t s_server_zone = 0;
+static uint8_t s_server_safety_limited = 0;
 static uint8_t s_server_alert = TREADMILL_ALERT_NONE;
+
+/* Đẩy trạng thái hiện tại lên màn hình. No-op nếu LCD chưa init được. */
+static void push_to_lcd(void)
+{
+    lcd_status_t st = {
+        .control_enabled = s_enabled,
+        .running         = s_server_running,
+        .speed           = s_server_speed,
+        .requested_speed = s_server_requested_speed,
+        .safety_limited  = s_server_safety_limited != 0,
+        .zone            = s_server_zone,
+        .alert           = (treadmill_alert_t)s_server_alert,
+    };
+    lcd_display_set_status(&st);
+}
 
 static const char *alert_to_str(uint8_t alert)
 {
@@ -26,7 +43,16 @@ static const char *alert_to_str(uint8_t alert)
 
 void treadmill_ctrl_init(void)
 {
+    /* Cũng được gọi lại khi mất kết nối, nên xoá luôn trạng thái cũ của
+     * server để màn hình không giữ số liệu đã hết hiệu lực. */
     s_enabled = false;
+    s_server_running = false;
+    s_server_speed = 0;
+    s_server_requested_speed = 0;
+    s_server_zone = 0;
+    s_server_safety_limited = 0;
+    s_server_alert = TREADMILL_ALERT_NONE;
+    push_to_lcd();
     ESP_LOGI(TAG, "initialized (control=OFF)");
 }
 
@@ -43,6 +69,7 @@ void treadmill_ctrl_toggle(void)
     int rc = ble_client_write_command(cmd);
     if (rc == 0) {
         s_enabled = new_state;
+        push_to_lcd();
         ESP_LOGI(TAG, "Treadmill control: %s", s_enabled ? "ON" : "OFF");
     } else {
         ESP_LOGE(TAG, "Toggle failed, keep control=%s",
@@ -97,6 +124,7 @@ void treadmill_ctrl_handle_status(const uint8_t *data, uint16_t len)
     s_server_running = msg->running != 0;
     s_server_speed = msg->speed;
     s_server_requested_speed = msg->requested_speed;
+    s_server_safety_limited = msg->safety_limited;
     s_server_zone = msg->zone;
     s_server_alert = msg->alert;
 
@@ -107,6 +135,8 @@ void treadmill_ctrl_handle_status(const uint8_t *data, uint16_t len)
     if (s_server_alert == TREADMILL_ALERT_CMD_REJECTED) {
         s_enabled = false;
     }
+
+    push_to_lcd();
 
     ESP_LOGI(TAG,
              "Status: running=%d speed=%d requested=%d limited=%d zone=%d alert=%s",
