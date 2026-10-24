@@ -16,6 +16,7 @@
 #include "treadmill_ctrl/treadmill_ctrl.h"
 #include "button/button.h"
 #include "lcd/lcd_display.h"
+#include "touch/touch_menu.h"
 
 static const char *tag = "NimBLE_BLE_CENT";
 static int blecent_gap_event(struct ble_gap_event *event, void *arg);
@@ -507,6 +508,7 @@ app_main(void)
     ble_client_init();
     treadmill_ctrl_init();
     button_init(on_button_event);
+    touch_menu_init();  /* sau lcd_display_init: dùng chung bus SPI + task màn hình */
 
     nimble_port_freertos_init(blecent_host_task);
 }

@@ -101,6 +101,32 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
     }
 
     /* ---------------------------------------------------------------- */
+    TEST("Phase 2: canh bao tat tinh nang hien dai do, alert nang thang");
+    {
+        lcd_status_t ok = {.running = true, .speed = 3,
+                           .alert = TREADMILL_ALERT_NONE,
+                           .features_off_mask = 0};
+        render(&ok, LCD_LINK_CONNECTED);
+        unsigned ok_filled = alert_filled();
+
+        lcd_status_t warn = {.running = true, .speed = 3,
+                             .alert = TREADMILL_ALERT_NONE,
+                             .features_off_mask = 0x01};
+        render(&warn, LCD_LINK_CONNECTED);
+        unsigned warn_hash = band_hash(&kBands[3]);
+        unsigned warn_filled = alert_filled();
+        CHECK(warn_filled > ok_filled * 4,
+              "dai canh bao phai to nen do, khong phai chu tren nen trang");
+
+        lcd_status_t severe = {.running = true, .speed = 3,
+                               .alert = TREADMILL_ALERT_DANGER,
+                               .features_off_mask = 0x01};
+        render(&severe, LCD_LINK_CONNECTED);
+        CHECK(band_hash(&kBands[3]) != warn_hash,
+              "alert nang phai thang dai canh bao tat tinh nang");
+    }
+
+    /* ---------------------------------------------------------------- */
     TEST("Moi lan render day dung mot khung len panel");
     {
         lcd_status_t st = {.running = true, .speed = 4};

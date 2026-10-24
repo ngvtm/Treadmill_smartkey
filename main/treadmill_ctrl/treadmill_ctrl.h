@@ -31,7 +31,6 @@ typedef struct __attribute__((packed)) {
 // set = feature i OFF). Old 7-byte statuses are still accepted, with
 // the mask read as 0 (all features ON — correct, since old servers
 // have no settings at all).
-typedef struct {
     uint8_t type;
     uint8_t running;
     uint8_t speed;

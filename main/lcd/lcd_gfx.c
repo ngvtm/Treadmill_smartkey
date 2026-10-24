@@ -334,7 +334,7 @@ esp_err_t lcd_gfx_init(void)
     spi_bus_config_t buscfg = {
         .sclk_io_num     = TFT_PIN_SCK,
         .mosi_io_num     = TFT_PIN_SDI,
-        .miso_io_num     = -1,
+        .miso_io_num     = TFT_PIN_TOUCH_MISO,  // Phase 2: touch shares the bus
         .quadwp_io_num   = -1,
         .quadhd_io_num   = -1,
         .max_transfer_sz = BAND_BYTES + 64,

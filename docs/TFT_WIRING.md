@@ -15,6 +15,33 @@ Giữ nguyên vị trí dây của e-paper cũ; chỉ đổi vai trò chân GPIO
 | SDO / MISO | — | không nối (chỉ ghi, không đọc panel) |
 | T_CLK, T_CS, T_DIN, T_DO, T_IRQ (touch XPT2046) | — | **không nối** — có touch nhưng không dùng theo chốt của user |
 
+## Phase 2 — Đấu dây touch XPT2046 (khi dùng menu cảm ứng)
+
+Touch chia sẻ bus SPI với màn hình; chỉ thêm 3 chân:
+
+| Chân touch | Nối vào | Ghi chú |
+|---|---|---|
+| T_CLK | GPIO32 (chung SCK màn hình) | |
+| T_DIN | GPIO33 (chung MOSI màn hình) | |
+| T_DO | GPIO19 | MISO riêng; bus SPI của màn hình đã khai báo chân này (menuconfig "Smartkey Touch") |
+| T_CS | GPIO14 | chip-select riêng, không phải strapping |
+| T_IRQ | GPIO39 | chỉ-vào, mức thấp = đang chạm; firmware poll 20 ms, không dùng ngắt |
+| VCC / GND | 3.3 V / GND | **không** đưa 5 V vào chân touch |
+
+Clock touch 2 MHz (device SPI riêng trên cùng bus, không dùng cấu
+hình 40 MHz của panel). Hầu hết module 2,4\" đưa các chân touch ra
+chung ribbon với chân màn hình — kiểm tra tên in trên module trước
+khi hàn (một số module in T_DIN là "T_SDA", T_DO là "T_SDO").
+
+Kiểm tra sau khi lắp: vào menu bằng cách **chạm giữ vùng tiêu đề
+2 giây khi máy đang dừng và đã kết nối** — lần đầu chưa có hiệu
+chuẩn sẽ hiện màn 3 dấu + (chạm từng dấu); sau đó menu hiện 4 hàng
+(BAO VE VUNG IR, KHOA AN TOAN, HIEU CHUAN CAM UNG, THOAT). Chạm
+công tắc → server đổi + ghi NVS; nếu server từ chối (máy đang
+chạy) công tắc tự về trạng thái cũ khi status mới về. Tắt một tính
+năng → màn chính luôn hiện dải đỏ "CO TINH NANG / AN TOAN DANG TAT"
+cho tới khi bật lại.
+
 ## Cấu hình firmware
 - Driver IC: menuconfig → **Smartkey TFT Display → TFT panel driver IC**: mặc định **ILI9341** (module v1.3 phổ biến). Nếu flash xong màn trắng/đen bất thường hoặc màu sai hẳn, đổi sang **ST7789** — không sửa code.
 - Tốc độ SPI mặc định 40 MHz; dây dài/nhiễu thì hạ `TFT SPI clock` xuống 20 MHz trong cùng menu.

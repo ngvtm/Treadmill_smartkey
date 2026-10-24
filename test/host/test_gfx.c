@@ -40,7 +40,8 @@ TEST_MAIN_BEGIN("lcd_gfx (TFT)")
     CHECK(fp_saw_dispon >= 1, "thieu DISPON (bat hien thi)");
     CHECK_EQ(fake_spi_bus_cfg.sclk_io_num, TFT_PIN_SCK, "SCK");
     CHECK_EQ(fake_spi_bus_cfg.mosi_io_num, TFT_PIN_SDI, "SDI -> MOSI");
-    CHECK_EQ(fake_spi_bus_cfg.miso_io_num, -1, "khong doc nguoc tu panel");
+    CHECK_EQ(fake_spi_bus_cfg.miso_io_num, TFT_PIN_TOUCH_MISO,
+             "Phase 2: bus co MISO cho touch, panel chi viet (khong doc)");
     CHECK_EQ(fake_io_cfg.dc_gpio_num, TFT_PIN_DC, "D/C");
     CHECK_EQ(fake_io_cfg.cs_gpio_num, TFT_PIN_CS, "CS");
     CHECK_EQ(fake_io_cfg.lcd_cmd_bits, 8, "lenh 8 bit");

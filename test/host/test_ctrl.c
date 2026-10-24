@@ -122,8 +122,10 @@ TEST_MAIN_BEGIN("treadmill_ctrl")
     /* ---------------------------------------------------------------- */
     TEST("Ban tin status dung dinh dang khong bi doi kich thuoc");
 
-    CHECK_EQ(sizeof(treadmill_status_msg_t), 7,
-             "struct packed phai la 7 byte, neu khong hai ben lech giao thuc");
+    // Phase 2: status dài 8 byte (thêm features_off_mask). Status cũ
+    // 7 byte vẫn được chấp nhận riêng (xem test Phase 2 bên dưới).
+    CHECK_EQ(sizeof(treadmill_status_msg_t), 8,
+             "struct packed phai la 8 byte, neu khong hai ben lech giao thuc");
 
     /* ---------------------------------------------------------------- */
     TEST("Chua ket noi BLE -> khong gui lenh nao");
@@ -492,6 +494,28 @@ TEST_MAIN_BEGIN("treadmill_ctrl")
         CHECK_EQ(s_lcd.alert, TREADMILL_ALERT_CMD_REJECTED, "CMD_REJECTED hien ngay");
         send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_NONE);
         CHECK_EQ(s_lcd.alert, TREADMILL_ALERT_NONE, "CMD_REJECTED khong bi giu");
+    }
+
+    /* ---------------------------------------------------------------- */
+    TEST("Phase 2: status 7 byte (cu) -> mask 0, status 8 byte -> mask dung");
+    {
+        reset_all(true);
+        treadmill_status_msg_t m = {
+            .type = TREADMILL_MSG_STATUS,
+            .running = 1, .speed = 3, .requested_speed = 3,
+            .safety_limited = 0, .zone = 1, .alert = TREADMILL_ALERT_NONE,
+            .features_off_mask = 0x02,
+        };
+        treadmill_ctrl_handle_status((const uint8_t *)&m, 7);
+        CHECK_EQ(treadmill_ctrl_get_features_off_mask(), 0,
+                 "status 7 byte phai doc mask = 0");
+        treadmill_ctrl_handle_status((const uint8_t *)&m, sizeof(m));
+        CHECK_EQ(treadmill_ctrl_get_features_off_mask(), 0x02,
+                 "status 8 byte phai doc mask = 0x02");
+        m.features_off_mask = 0;
+        treadmill_ctrl_handle_status((const uint8_t *)&m, sizeof(m));
+        CHECK_EQ(treadmill_ctrl_get_features_off_mask(), 0,
+                 "mask ve 0 khi server bao tat ca BAT");
     }
 
     /* ---------------------------------------------------------------- */
