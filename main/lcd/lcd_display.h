@@ -39,6 +39,7 @@ typedef struct {
     uint8_t           zone;            /* vùng an toàn báo về */
     treadmill_alert_t alert;           /* cảnh báo hiện tại */
     bool              signal_lost;     /* S1.2: quá lâu không có status mới */
+    uint8_t           features_off_mask; /* Phase 2: bit i = tính năng i đang TẮT */
 } lcd_status_t;
 
 /** Khởi tạo panel và task vẽ. Trả về lỗi nếu không init được màn hình;
@@ -50,6 +51,11 @@ void lcd_display_set_link(lcd_link_state_t link);
 
 /** Cập nhật toàn bộ trạng thái bàn chạy. */
 void lcd_display_set_status(const lcd_status_t *st);
+
+/** Phase 2: menu cảm ứng giữ màn hình (lcd_task ngủ, không vẽ đè),
+ *  và trả lại màn hình khi thoát menu (vẽ lại khung thường). */
+void lcd_display_pause(void);
+void lcd_display_resume(void);
 
 void lcd_display_backlight(bool on);
 

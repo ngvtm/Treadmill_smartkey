@@ -54,6 +54,17 @@ extern "C" {
 #define TFT_PIN_SDI  33
 #endif
 
+/* Phase 2: touch MISO (XPT2046 T_DO). The display bus is created
+ * without MISO by default; giving it this pin lets the touch driver
+ * share the bus (the display never reads, so it costs nothing). */
+#ifndef TFT_PIN_TOUCH_MISO
+#ifdef CONFIG_TREADMILL_TOUCH_MISO_GPIO
+#define TFT_PIN_TOUCH_MISO CONFIG_TREADMILL_TOUCH_MISO_GPIO
+#else
+#define TFT_PIN_TOUCH_MISO 19
+#endif
+#endif
+
 #ifndef TFT_PANEL_W
 #define TFT_PANEL_W 240
 #endif

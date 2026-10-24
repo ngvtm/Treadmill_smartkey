@@ -28,6 +28,11 @@ bool ble_client_is_ready(void);
 /** Ghi 1 byte command tới characteristic của Peripheral */
 int  ble_client_write_command(uint8_t cmd);
 
+/** Phase 2: gửi SET_FEATURE 2 byte [0x10, feature_id<<4 | enable].
+ * Feature ids mirror the server's settings_logic.h (0 = IR zone
+ * protection, 1 = reed safety key). */
+int  ble_client_write_feature(uint8_t feature_id, bool enable);
+
 /** Phase 1, S1.4: đọc RSSI (dBm) của kết nối hiện tại qua NimBLE.
  * Trả về 0 và ghi *out_rssi khi đọc được, khác 0 khi chưa kết nối
  * hoặc NimBLE báo lỗi. */
