@@ -120,7 +120,10 @@ static void draw_menu(void)
 static void draw_cal_target(int step, int x, int y)
 {
     lcd_gfx_clear(LCD_PAPER);
-    char title[16];
+    /* Buffer must hold "CHAM VAO DAU + (3/3)" = 21 chars + NUL = 22 bytes.
+     * 16 bytes was a real overflow, caught by IDF 5.3 -Werror=format-truncation;
+     * 32 bytes leaves margin. UI text itself is unchanged. */
+    char title[32];
     snprintf(title, sizeof(title), "CHAM VAO DAU + (%d/3)", step + 1);
     lcd_gfx_text_center(0, LCD_W, 24, title, 2, LCD_INK, LCD_PAPER);
     lcd_gfx_rect(x - 16, y - 16, 33, 33, 2, LCD_RED);
