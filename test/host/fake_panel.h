@@ -5,9 +5,9 @@
 
 #include "lcd_gfx.h"
 
-/* Kich thuoc panel that (landscape sau khi xoay 90 do, xem lcd_gfx.c). */
-#define FP_W PANEL_W
-#define FP_H PANEL_H
+/* Kich thuoc logic, bang kich thuoc panel TFT. */
+#define FP_W LCD_W
+#define FP_H LCD_H
 
 /*
  * Panel TFT gia: giai ma lenh ILI9341/ST7789 (CASET/RASET/RAMWR),
@@ -35,13 +35,8 @@ extern int fp_win_x0, fp_win_x1, fp_win_y0, fp_win_y1; /* cua so gan nhat */
 void fp_reset(void);
 void fp_clear(uint8_t color);
 
-/* Dem pixel mang gia tri `c` trong vung cho truoc (toa do panel). */
+/* Dem pixel mang gia tri `c` trong vung cho truoc. */
 int  fp_count(int x, int y, int w, int h, uint8_t c);
-/* Ban dem theo toa do framebuffer app (portrait): anh xa vung fb sang
- * vung panel xoay 90 do (fb (x,y) -> panel (LCD_H-1-y, x)). */
-int  fp_count_fb(int x, int y, int w, int h, uint8_t c);
-int  fp_uniform_fb(int x, int y, int w, int h, uint8_t c);
-int  fp_ink_fb(int x, int y, int w, int h);
 /* 1 neu ca vung chi mot gia tri duy nhat. */
 int  fp_uniform(int x, int y, int w, int h, uint8_t c);
 /* So pixel mang muc den trong vung. */

@@ -74,22 +74,6 @@ int fp_ink(int x, int y, int w, int h)
     return fp_count(x, y, w, h, LCD_INK);
 }
 
-/* Vung fb (x, y, w, h) -> vung panel (LCD_H-(y+h), x, h, w). */
-int fp_count_fb(int x, int y, int w, int h, uint8_t c)
-{
-    return fp_count(LCD_H - (y + h), x, h, w, c);
-}
-
-int fp_uniform_fb(int x, int y, int w, int h, uint8_t c)
-{
-    return fp_count_fb(x, y, w, h, c) == w * h;
-}
-
-int fp_ink_fb(int x, int y, int w, int h)
-{
-    return fp_count_fb(x, y, w, h, LCD_INK);
-}
-
 /* ---------------- spi ---------------- */
 
 spi_bus_config_t fake_spi_bus_cfg;
