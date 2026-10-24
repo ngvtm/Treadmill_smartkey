@@ -119,8 +119,11 @@ static void draw_state(const lcd_status_t *st)
 {
     int y = ST_Y;
     y += fit_center(y, "TRANG THAI", 1, LCD_INK, LCD_PAPER) * LCD_GLYPH_H + 2;
-    y += fit_center(y, st->running ? "DANG CHAY" : "DA DUNG", 3,
-                    LCD_INK, LCD_PAPER) * LCD_GLYPH_H + 2;
+    // S1.2: stale status replaces the run/stop line — the numbers on
+    // screen are no longer trustworthy, and that must be visible.
+    y += fit_center(y, st->signal_lost ? "MAT TIN HIEU"
+                                       : (st->running ? "DANG CHAY" : "DA DUNG"),
+                    3, LCD_INK, LCD_PAPER) * LCD_GLYPH_H + 2;
     fit_center(y, st->control_enabled ? "DIEU KHIEN: BAT" : "DIEU KHIEN: TAT",
                1, LCD_INK, LCD_PAPER);
 }
@@ -253,7 +256,8 @@ static bool changed(const lcd_status_t *a, const lcd_status_t *b)
         || a->requested_speed != b->requested_speed
         || a->safety_limited  != b->safety_limited
         || a->zone            != b->zone
-        || a->alert           != b->alert;
+        || a->alert           != b->alert
+        || a->signal_lost     != b->signal_lost;
 }
 
 static void lcd_task(void *arg)

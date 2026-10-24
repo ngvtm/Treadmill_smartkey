@@ -2,8 +2,20 @@
 #include "ble_client/ble_client.h"
 #include "lcd/lcd_display.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #define TAG "TREADMILL_CTRL"
+
+/* Phase 1, S1.2 timeouts (menuconfig "Smartkey Control", defaults = plan). */
+#ifndef CONFIG_TREADMILL_CTRL_ON_CONFIRM_TIMEOUT_MS
+#define CONFIG_TREADMILL_CTRL_ON_CONFIRM_TIMEOUT_MS 2000
+#endif
+#ifndef CONFIG_TREADMILL_CTRL_STATUS_STALE_MS
+#define CONFIG_TREADMILL_CTRL_STATUS_STALE_MS 2000
+#endif
+
+#define CTRL_TICK_MS 100
 
 static bool s_enabled = false;
 static bool s_server_running = false;
@@ -12,6 +24,22 @@ static uint8_t s_server_requested_speed = 0;
 static uint8_t s_server_zone = 0;
 static uint8_t s_server_safety_limited = 0;
 static uint8_t s_server_alert = TREADMILL_ALERT_NONE;
+/* S1.2: ON is no longer optimistic. Sending ON starts a pending window;
+ * only a status with running=1 inside the window confirms control ON.
+ * No auto-retry: re-sending ON after a refusal could restart the belt
+ * right after a fault. */
+static bool s_on_pending = false;
+static uint32_t s_on_deadline_ms = 0;
+/* S1.2: staleness — a connected server that stops sending status is
+ * treated as signal lost: control locks until a fresh status arrives. */
+static bool s_have_status = false;
+static uint32_t s_last_status_ms = 0;
+static bool s_signal_lost = false;
+
+static uint32_t now_ms(void)
+{
+    return (uint32_t)((uint64_t)xTaskGetTickCount() * 1000u / configTICK_RATE_HZ);
+}
 
 /* Đẩy trạng thái hiện tại lên màn hình. No-op nếu LCD chưa init được. */
 static void push_to_lcd(void)
@@ -24,8 +52,49 @@ static void push_to_lcd(void)
         .safety_limited  = s_server_safety_limited != 0,
         .zone            = s_server_zone,
         .alert           = (treadmill_alert_t)s_server_alert,
+        .signal_lost     = s_signal_lost,
     };
     lcd_display_set_status(&st);
+}
+
+/* S1.2: evaluate the ON-confirm timeout and the status-staleness gate
+ * against the current clock. Called from every command entry point and
+ * from the periodic tick, so an expiry surfaces even with no user input. */
+static void evaluate_timeouts(uint32_t now)
+{
+    if (s_on_pending && now >= s_on_deadline_ms) {
+        // Unconfirmed ON: control simply never turns on (the display
+        // already shows control OFF — there is no message line on the
+        // LCD to print "LENH KHONG DUOC XAC NHAN" on, and inventing one
+        // would mean redesigning the screen for a transient state).
+        s_on_pending = false;
+        ESP_LOGW(TAG, "ON not confirmed within %d ms, control stays OFF",
+                 CONFIG_TREADMILL_CTRL_ON_CONFIRM_TIMEOUT_MS);
+        push_to_lcd();
+    }
+    if (s_have_status && !s_signal_lost &&
+        now - s_last_status_ms > CONFIG_TREADMILL_CTRL_STATUS_STALE_MS) {
+        s_signal_lost = true;
+        s_enabled = false;
+        s_on_pending = false;
+        ESP_LOGW(TAG, "MAT TIN HIEU: no status for >%d ms, control locked",
+                 CONFIG_TREADMILL_CTRL_STATUS_STALE_MS);
+        push_to_lcd();
+    }
+}
+
+void treadmill_ctrl_tick(void)
+{
+    evaluate_timeouts(now_ms());
+}
+
+static void ctrl_tick_task(void *arg)
+{
+    (void)arg;
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(CTRL_TICK_MS));
+        treadmill_ctrl_tick();
+    }
 }
 
 static const char *alert_to_str(uint8_t alert)
@@ -53,8 +122,19 @@ void treadmill_ctrl_init(void)
     s_server_zone = 0;
     s_server_safety_limited = 0;
     s_server_alert = TREADMILL_ALERT_NONE;
+    s_on_pending = false;
+    s_have_status = false;
+    s_signal_lost = false;
     push_to_lcd();
     ESP_LOGI(TAG, "initialized (control=OFF)");
+
+    // Periodic tick for the S1.2 timeouts. Created once: init is also
+    // called on disconnect, and re-creating the task would leak tasks.
+    static bool tick_task_created = false;
+    if (!tick_task_created) {
+        tick_task_created = true;
+        xTaskCreate(ctrl_tick_task, "ctrl_tick", 2048, NULL, 9, NULL);
+    }
 }
 
 /* Phase 1, S1.1 — control gating mirror. The server is the real safety
@@ -82,29 +162,57 @@ void treadmill_ctrl_toggle(void)
         return;
     }
 
-    bool new_state = !s_enabled;
-    uint8_t cmd = new_state ? TREADMILL_CMD_ON : TREADMILL_CMD_OFF;
+    uint32_t now = now_ms();
+    evaluate_timeouts(now);
 
-    // Gate ON only; OFF passes through every gate, always.
-    if (new_state && alert_blocks_on(s_server_alert)) {
+    // OFF path: control ON, or an ON still awaiting confirmation.
+    // OFF is never gated; a pending ON is cancelled by it. On BLE write
+    // failure the OFF is retried once, and control keeps its old state
+    // until a write actually goes out (the display keeps showing the
+    // server's running state until a status confirms the stop).
+    if (s_enabled || s_on_pending) {
+        int rc = ble_client_write_command(TREADMILL_CMD_OFF);
+        if (rc != 0) {
+            rc = ble_client_write_command(TREADMILL_CMD_OFF);
+        }
+        if (rc == 0) {
+            s_enabled = false;
+            s_on_pending = false;
+            push_to_lcd();
+            ESP_LOGI(TAG, "Treadmill control: OFF");
+        } else {
+            ESP_LOGE(TAG, "OFF failed twice, keep control=%s",
+                     s_enabled ? "ON" : "OFF");
+        }
+        return;
+    }
+
+    // ON path: S1.1 gate + S1.2 staleness gate, then pending-confirm.
+    if (s_signal_lost) {
+        ESP_LOGW(TAG, "Refuse ON: signal lost (no fresh status)");
+        return;
+    }
+    if (alert_blocks_on(s_server_alert)) {
         ESP_LOGW(TAG, "Refuse ON: latest alert=%s (safety key out)",
                  alert_to_str(s_server_alert));
         return;
     }
 
-    int rc = ble_client_write_command(cmd);
+    int rc = ble_client_write_command(TREADMILL_CMD_ON);
     if (rc == 0) {
-        s_enabled = new_state;
+        s_on_pending = true;
+        s_on_deadline_ms = now + CONFIG_TREADMILL_CTRL_ON_CONFIRM_TIMEOUT_MS;
         push_to_lcd();
-        ESP_LOGI(TAG, "Treadmill control: %s", s_enabled ? "ON" : "OFF");
+        ESP_LOGI(TAG, "ON sent, awaiting confirmation within %d ms",
+                 CONFIG_TREADMILL_CTRL_ON_CONFIRM_TIMEOUT_MS);
     } else {
-        ESP_LOGE(TAG, "Toggle failed, keep control=%s",
-                 s_enabled ? "ON" : "OFF");
+        ESP_LOGE(TAG, "ON write failed, control stays OFF");
     }
 }
 
 void treadmill_ctrl_speed_up(void)
 {
+    evaluate_timeouts(now_ms());
     if (!s_enabled || !ble_client_is_ready()) {
         ESP_LOGW(TAG, "Ignore SPEED_UP: control disabled or BLE not ready");
         return;
@@ -124,6 +232,7 @@ void treadmill_ctrl_speed_up(void)
 
 void treadmill_ctrl_speed_down(void)
 {
+    evaluate_timeouts(now_ms());
     if (!s_enabled || !ble_client_is_ready()) {
         ESP_LOGW(TAG, "Ignore SPEED_DOWN: control disabled or BLE not ready");
         return;
@@ -159,6 +268,12 @@ void treadmill_ctrl_handle_status(const uint8_t *data, uint16_t len)
         return;
     }
 
+    // Fresh status clears the staleness lock and (re)starts its clock.
+    uint32_t now = now_ms();
+    s_have_status = true;
+    s_last_status_ms = now;
+    s_signal_lost = false;
+
     s_server_running = msg->running != 0;
     s_server_speed = msg->speed;
     s_server_requested_speed = msg->requested_speed;
@@ -168,11 +283,28 @@ void treadmill_ctrl_handle_status(const uint8_t *data, uint16_t len)
 
     if (!s_server_running) {
         s_enabled = false;
+        s_on_pending = false;
     }
 
     if (s_server_alert == TREADMILL_ALERT_CMD_REJECTED ||
         s_server_alert == TREADMILL_ALERT_SAFETY_KEY_OUT) {
         s_enabled = false;
+        s_on_pending = false;
+    }
+
+    // S1.2 confirmation: a running status inside the pending window
+    // turns control ON. A running status arriving after the window
+    // expired does NOT retro-confirm (the deadline is checked here, not
+    // just in the tick, so a late status can never confirm a dead ON).
+    if (s_on_pending && s_server_running) {
+        if (now < s_on_deadline_ms) {
+            s_on_pending = false;
+            s_enabled = true;
+            ESP_LOGI(TAG, "ON confirmed by server status");
+        } else {
+            s_on_pending = false;
+            ESP_LOGW(TAG, "Running status arrived after ON window, ignored");
+        }
     }
 
     push_to_lcd();
