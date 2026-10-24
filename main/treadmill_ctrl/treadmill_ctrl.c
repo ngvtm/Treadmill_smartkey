@@ -57,6 +57,24 @@ void treadmill_ctrl_init(void)
     ESP_LOGI(TAG, "initialized (control=OFF)");
 }
 
+/* Phase 1, S1.1 — control gating mirror. The server is the real safety
+ * layer and would refuse these commands anyway; refusing them here too
+ * means a dangerous command is never even put on the air, and the user
+ * gets the reason immediately instead of after a round trip.
+ * OFF is NEVER gated: stopping must always be the easiest action. */
+static bool alert_blocks_speed(uint8_t alert)
+{
+    return alert == TREADMILL_ALERT_DANGER ||
+           alert == TREADMILL_ALERT_NO_PERSON ||
+           alert == TREADMILL_ALERT_SAFETY_KEY_OUT ||
+           alert == TREADMILL_ALERT_CMD_REJECTED;
+}
+
+static bool alert_blocks_on(uint8_t alert)
+{
+    return alert == TREADMILL_ALERT_SAFETY_KEY_OUT;
+}
+
 void treadmill_ctrl_toggle(void)
 {
     if (!ble_client_is_ready()) {
@@ -66,6 +84,13 @@ void treadmill_ctrl_toggle(void)
 
     bool new_state = !s_enabled;
     uint8_t cmd = new_state ? TREADMILL_CMD_ON : TREADMILL_CMD_OFF;
+
+    // Gate ON only; OFF passes through every gate, always.
+    if (new_state && alert_blocks_on(s_server_alert)) {
+        ESP_LOGW(TAG, "Refuse ON: latest alert=%s (safety key out)",
+                 alert_to_str(s_server_alert));
+        return;
+    }
 
     int rc = ble_client_write_command(cmd);
     if (rc == 0) {
@@ -85,6 +110,12 @@ void treadmill_ctrl_speed_up(void)
         return;
     }
 
+    if (alert_blocks_speed(s_server_alert)) {
+        ESP_LOGW(TAG, "Refuse SPEED_UP: latest alert=%s",
+                 alert_to_str(s_server_alert));
+        return;
+    }
+
     int rc = ble_client_write_command(TREADMILL_CMD_SPEED_UP);
     if (rc == 0) {
         ESP_LOGI(TAG, "Command: SPEED_UP");
@@ -95,6 +126,12 @@ void treadmill_ctrl_speed_down(void)
 {
     if (!s_enabled || !ble_client_is_ready()) {
         ESP_LOGW(TAG, "Ignore SPEED_DOWN: control disabled or BLE not ready");
+        return;
+    }
+
+    if (alert_blocks_speed(s_server_alert)) {
+        ESP_LOGW(TAG, "Refuse SPEED_DOWN: latest alert=%s",
+                 alert_to_str(s_server_alert));
         return;
     }
 
