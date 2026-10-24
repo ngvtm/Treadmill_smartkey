@@ -66,7 +66,8 @@ static bool alert_is_severe(uint8_t alert)
 {
     return alert == TREADMILL_ALERT_DANGER ||
            alert == TREADMILL_ALERT_NO_PERSON ||
-           alert == TREADMILL_ALERT_SAFETY_KEY_OUT;
+           alert == TREADMILL_ALERT_SAFETY_KEY_OUT ||
+           alert == TREADMILL_ALERT_MOTOR_FAULT;
 }
 
 static uint32_t now_ms(void)
@@ -149,6 +150,7 @@ static const char *alert_to_str(uint8_t alert)
     case TREADMILL_ALERT_NO_PERSON:    return "NO_PERSON";
     case TREADMILL_ALERT_CMD_REJECTED: return "CMD_REJECTED";
     case TREADMILL_ALERT_SAFETY_KEY_OUT: return "SAFETY_KEY_OUT";
+    case TREADMILL_ALERT_MOTOR_FAULT:  return "MOTOR_FAULT";
     default:                           return "UNKNOWN";
     }
 }
@@ -192,12 +194,17 @@ static bool alert_blocks_speed(uint8_t alert)
     return alert == TREADMILL_ALERT_DANGER ||
            alert == TREADMILL_ALERT_NO_PERSON ||
            alert == TREADMILL_ALERT_SAFETY_KEY_OUT ||
+           alert == TREADMILL_ALERT_MOTOR_FAULT ||
            alert == TREADMILL_ALERT_CMD_REJECTED;
 }
 
 static bool alert_blocks_on(uint8_t alert)
 {
-    return alert == TREADMILL_ALERT_SAFETY_KEY_OUT;
+    // MOTOR_FAULT mirrors the server's latched fault: the server
+    // refuses ON until the cooldown expires, and the key must not
+    // offer a start it knows will be refused.
+    return alert == TREADMILL_ALERT_SAFETY_KEY_OUT ||
+           alert == TREADMILL_ALERT_MOTOR_FAULT;
 }
 
 /* Phase 1, S1.3: the old single toggle() is split. A quick press can

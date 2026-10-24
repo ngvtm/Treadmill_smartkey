@@ -495,6 +495,26 @@ TEST_MAIN_BEGIN("treadmill_ctrl")
     }
 
     /* ---------------------------------------------------------------- */
+    TEST("GĐ2: MOTOR_FAULT chan ON va toc do, OFF van duoc");
+    {
+        reset_all(true);
+        // ON gate: status chay nhung alert MOTOR_FAULT, chua enabled.
+        send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_MOTOR_FAULT);
+        treadmill_ctrl_request_on();
+        CHECK_EQ(s_sent_n, 0, "MOTOR_FAULT van gui ON");
+
+        // Speed gate: enabled roi, alert chuyen sang MOTOR_FAULT.
+        confirm_on();
+        s_sent_n = 0;
+        send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_MOTOR_FAULT);
+        treadmill_ctrl_speed_up();
+        CHECK_EQ(s_sent_n, 0, "MOTOR_FAULT van tang toc");
+        treadmill_ctrl_request_off();
+        CHECK_EQ(s_sent_n, 1, "MOTOR_FAULT van OFF duoc");
+        CHECK_EQ(s_sent[0], TREADMILL_CMD_OFF, "lenh phai la OFF");
+    }
+
+    /* ---------------------------------------------------------------- */
     TEST("S1.3: OFF khong bi gioi han toc do bam");
     {
         reset_all(true);

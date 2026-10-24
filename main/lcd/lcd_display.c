@@ -202,6 +202,8 @@ static void draw_alert(treadmill_alert_t alert)
         l1 = "BI TU CHOI";     l2 = "KIEM TRA MAY";  break;
     case TREADMILL_ALERT_SAFETY_KEY_OUT:
         l1 = "KHOA AN TOAN";   l2 = "DA BI BUT RA";  break;
+    case TREADMILL_ALERT_MOTOR_FAULT:
+        l1 = "LOI DONG CO";    l2 = "KIEM TRA MOTOR"; break;
     default:
         l1 = "KHONG RO";       l2 = NULL;            break;
     }
