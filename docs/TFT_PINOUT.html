@@ -12,7 +12,7 @@ table { border-collapse: collapse; } td, th { border: 1px solid #bbb; padding: 5
 <h1>Sơ đồ chân cắm TFT 2,4" SPI + touch XPT2046 — smartkey</h1>
 <p><b>Quy tắc đọc sơ đồ:</b> đi theo <b>TÊN chân in trên module</b>, không theo vị trí trong hình —
 thứ tự chân thực tế tùy hãng module (một số module in T_DIN là "T_SDA", T_DO là "T_SDO",
-SDI là "SDA"). <b>5 chân touch (T_CLK, T_DIN, T_CS, T_DO, T_IRQ) là BẮT BUỘC từ Phase 1 touch controls — cảm ứng giờ là điều khiển chính (khởi động, dừng, tăng/giảm tốc qua thanh GIAM / BAT-TAT / TANG ở đáy màn chính); không nối 5 chân này thì chỉ còn bật nguồn + dừng khẩn cấp, không khởi động hay đổi tốc được.</b> Mọi chân trong hình đã đối chiếu với code (lcd_gfx.h, touch_xpt2046.c, Kconfig):
+SDI là "SDA"). <b>5 chân touch (T_CLK, T_DIN, T_CS, T_DO, T_IRQ) là BẮT BUỘC từ Phase 1 touch controls — cảm ứng giờ là điều khiển chính (khởi động, dừng, tăng/giảm tốc qua thanh GIAM / BAT-TAT / TANG ở đáy màn chính); không nối 5 chân này thì chỉ còn bật nguồn + dừng khẩn cấp, không khởi động hay đổi tốc được.</b> <b>Chú ý mạch 30 chân:</b> GPIO39 không in số 39 mà in là <b>VN</b> (hàng trên, giữa D34 và VP, gần nút EN) — nối T_IRQ vào chân VN đó; GPIO36 in là VP. Mọi chân trong hình đã đối chiếu với code (lcd_gfx.h, touch_xpt2046.c, Kconfig):
 CS 27, RESET 25, DC 26, MOSI 33, SCK 32, BL 4, T_DO 19, T_CS 14, T_IRQ 39.</p>
 <svg viewBox="0 0 780 566" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">
 <rect x="20" y="20" width="200" height="526" fill="#f6f1e7" stroke="#999"/>
@@ -90,7 +90,12 @@ màn trắng tinh hoặc không lên dù đã đúng driver IC.</p></div>
 <h2>3. Các chân còn lại</h2>
 <ul>
 <li><b>SDO / MISO của màn hình không nối</b> — firmware chỉ ghi, không đọc panel.</li>
-<li><b>T_IRQ chỉ là mức báo chạm</b> — firmware poll mỗi 20 ms, không dùng ngắt; chân này chỉ-vào.</li>
+<li><b>T_IRQ chỉ là mức báo chạm</b> — firmware poll mỗi 20 ms, không dùng ngắt; chân này chỉ-vào.
+<b>Quan trọng:</b> GPIO39 là chân chỉ-vào, KHÔNG có pull-up nội — code có xin pull-up nhưng trên
+chân này không có tác dụng. Nếu module chưa tự kéo T_IRQ lên thì gắn thêm trở 10k từ T_IRQ lên
+3.3V (gắn song song cũng không sao nếu module đã có trở); không thì dây lơ lửng có thể gây chạm
+ảo. Cách khác không cần thêm linh kiện: chuyển chân IRQ sang GPIO13 trong menuconfig (chân này
+có pull-up thật) rồi build lại.</li>
 <li><b>Đừng lẫn với nút bấm:</b> GPIO21 = nguồn, GPIO22 = dừng khẩn cấp, GPIO23 để trống (không liên quan tới TFT; code vẫn nhận GPIO23 là dừng khẩn cấp nếu sau này anh nối thêm).</li>
 <li><b>Driver IC:</b> menuconfig mặc định ILI9341; màn trắng/đen bất thường hoặc màu sai hẳn thì đổi
 sang ST7789, không sửa code. Dây dài/nhiễu thì hạ SPI màn hình từ 40 MHz xuống 20 MHz trong cùng menu.</li>

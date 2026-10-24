@@ -28,7 +28,7 @@ Touch chia sẻ bus SPI với màn hình; chỉ thêm 3 chân:
 | T_DIN | GPIO33 (chung MOSI màn hình) | |
 | T_DO | GPIO19 | MISO riêng; bus SPI của màn hình đã khai báo chân này (menuconfig "Smartkey Touch") |
 | T_CS | GPIO14 | chip-select riêng, không phải strapping |
-| T_IRQ | GPIO39 | chỉ-vào, mức thấp = đang chạm; firmware poll 20 ms, không dùng ngắt |
+| T_IRQ | GPIO39 (= chân **VN** trên mạch 30 chân) | chỉ-vào, mức thấp = đang chạm; firmware poll 20 ms, không dùng ngắt; **chân này không có pull-up nội** → thêm trở 10k lên 3.3V nếu module chưa có (gắn song song cũng không sao) |
 | VCC / GND | 3.3 V / GND | **không** đưa 5 V vào chân touch |
 
 Clock touch 2 MHz (device SPI riêng trên cùng bus, không dùng cấu
