@@ -74,6 +74,22 @@ int fp_ink(int x, int y, int w, int h)
     return fp_count(x, y, w, h, LCD_INK);
 }
 
+/* Vung fb (x, y, w, h) -> vung panel (LCD_H-(y+h), x, h, w). */
+int fp_count_fb(int x, int y, int w, int h, uint8_t c)
+{
+    return fp_count(LCD_H - (y + h), x, h, w, c);
+}
+
+int fp_uniform_fb(int x, int y, int w, int h, uint8_t c)
+{
+    return fp_count_fb(x, y, w, h, c) == w * h;
+}
+
+int fp_ink_fb(int x, int y, int w, int h)
+{
+    return fp_count_fb(x, y, w, h, LCD_INK);
+}
+
 /* ---------------- spi ---------------- */
 
 spi_bus_config_t fake_spi_bus_cfg;
@@ -181,10 +197,22 @@ esp_err_t esp_lcd_panel_io_tx_color(esp_lcd_panel_io_handle_t io, int cmd,
         } else {
             fp_fb[s_cy][s_cx] = v;
         }
-        s_cx++;
-        if (s_cx > fp_win_x1) {
-            s_cx = fp_win_x0;
+        /* Tien con tro ghi: MV=0 tang CASET truoc (ghi theo hang);
+         * MV=1 tang RASET truoc (ghi theo cot) — dung kieu panel that
+         * the hien o ban d05cacd (gui hang duoi MV bi xao cheo thanh
+         * vet ngang). Firmware phai gui cot-major khi MV=1. */
+        if (fp_madctl & 0x20) {
             s_cy++;
+            if (s_cy > fp_win_y1) {
+                s_cy = fp_win_y0;
+                s_cx++;
+            }
+        } else {
+            s_cx++;
+            if (s_cx > fp_win_x1) {
+                s_cx = fp_win_x0;
+                s_cy++;
+            }
         }
     }
     return ESP_OK;

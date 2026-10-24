@@ -35,7 +35,7 @@ TEST_MAIN_BEGIN("lcd_gfx (TFT)")
     TEST("Chuoi init TFT dung: reset, RGB565, bat man");
     CHECK(fp_saw_swreset, "thieu SWRESET (0x01)");
     CHECK_EQ(fp_colmod, 0x55, "COLMOD phai la RGB565 (0x55)");
-    CHECK_EQ(fp_madctl, 0x48, "MADCTL ILI9341 mac dinh (MX+BGR)");
+    CHECK_EQ(fp_madctl, 0x28, "MADCTL ILI9341 mac dinh (MV+BGR, xoay 90)");
     CHECK(fp_saw_slpout >= 1, "thieu SLPOUT (thoat sleep)");
     CHECK(fp_saw_dispon >= 1, "thieu DISPON (bat hien thi)");
     CHECK_EQ(fake_spi_bus_cfg.sclk_io_num, TFT_PIN_SCK, "SCK");
@@ -47,7 +47,7 @@ TEST_MAIN_BEGIN("lcd_gfx (TFT)")
     CHECK_EQ(fake_io_cfg.lcd_cmd_bits, 8, "lenh 8 bit");
     CHECK_EQ(fake_io_cfg.lcd_param_bits, 8, "tham so 8 bit");
     CHECK_EQ(fake_io_cfg.pclk_hz, 40 * 1000 * 1000, "SPI TFT mac dinh 40 MHz");
-    CHECK(fake_spi_bus_cfg.max_transfer_sz >= (size_t)(LCD_W * 16 * 2),
+    CHECK(fake_spi_bus_cfg.max_transfer_sz >= (size_t)(PANEL_W * 16 * 2),
           "transfer size %d phai chua mot dai RGB565",
           (int)fake_spi_bus_cfg.max_transfer_sz);
     CHECK((fake_gpio_configured_mask & (1ULL << TFT_PIN_BL)) != 0,
@@ -96,23 +96,23 @@ TEST_MAIN_BEGIN("lcd_gfx (TFT)")
         lcd_gfx_clear(LCD_PAPER);
         lcd_gfx_flush();
         CHECK_EQ(fp_frames, 1, "flush phai gui dung mot khung");
-        CHECK_EQ(fp_ramwr, LCD_H / 16, "khung chia thanh cac dai 16 dong");
+        CHECK_EQ(fp_ramwr, PANEL_H / 16, "khung chia thanh cac dai 16 dong");
         CHECK_EQ(fp_bytes, LCD_W * LCD_H * 2,
                  "kich thuoc anh RGB565 gui di");
         CHECK_EQ(fp_oob, 0, "ghi sai kich thuoc/cua so");
-        CHECK(fp_uniform(0, 0, LCD_W, LCD_H, LCD_PAPER), "clear trang");
+        CHECK(fp_uniform(0, 0, FP_W, FP_H, LCD_PAPER), "clear trang");
 
         lcd_gfx_clear(LCD_INK);
         lcd_gfx_flush();
-        CHECK(fp_uniform(0, 0, LCD_W, LCD_H, LCD_INK), "clear den");
+        CHECK(fp_uniform(0, 0, FP_W, FP_H, LCD_INK), "clear den");
 
         lcd_gfx_clear(LCD_RED);
         lcd_gfx_flush();
-        CHECK(fp_uniform(0, 0, LCD_W, LCD_H, LCD_RED), "clear do (palette)");
+        CHECK(fp_uniform(0, 0, FP_W, FP_H, LCD_RED), "clear do (palette)");
 
         lcd_gfx_clear(LCD_GREEN);
         lcd_gfx_flush();
-        CHECK(fp_uniform(0, 0, LCD_W, LCD_H, LCD_GREEN), "clear xanh la (palette)");
+        CHECK(fp_uniform(0, 0, FP_W, FP_H, LCD_GREEN), "clear xanh la (palette)");
     }
 
     /* ---------------------------------------------------------------- */
@@ -136,7 +136,7 @@ TEST_MAIN_BEGIN("lcd_gfx (TFT)")
             lcd_gfx_clear(LCD_PAPER);
             lcd_gfx_text(0, 0, (char[]){(char)c, 0}, 1, LCD_INK, LCD_PAPER);
             lcd_gfx_flush();
-            const int ink = fp_ink(0, 0, LCD_GLYPH_W, LCD_GLYPH_H);
+            const int ink = fp_ink_fb(0, 0, LCD_GLYPH_W, LCD_GLYPH_H);
             if (ink > 5 * 7) {
                 bad_rows++;
             }
@@ -234,8 +234,8 @@ TEST_MAIN_BEGIN("lcd_gfx (TFT)")
         lcd_gfx_flush();
 
         CHECK_EQ(fp_oob, 0, "co ghi ra ngoai khung");
-        CHECK(fp_uniform(0, 0, 40, 30, LCD_INK), "phan trong khung phai to");
-        CHECK(fp_uniform(LCD_W - 10, LCD_H - 10, 10, 10, LCD_INK),
+        CHECK(fp_uniform_fb(0, 0, 40, 30, LCD_INK), "phan trong khung phai to");
+        CHECK(fp_uniform_fb(LCD_W - 10, LCD_H - 10, 10, 10, LCD_INK),
               "goc phai duoi phai to");
     }
 
@@ -245,11 +245,11 @@ TEST_MAIN_BEGIN("lcd_gfx (TFT)")
         lcd_gfx_clear(LCD_PAPER);
         lcd_gfx_rect(10, 10, 40, 30, 2, LCD_INK);
         lcd_gfx_flush();
-        CHECK(fp_uniform(10, 10, 40, 2, LCD_INK), "canh tren");
-        CHECK(fp_uniform(10, 38, 40, 2, LCD_INK), "canh duoi");
-        CHECK(fp_uniform(10, 10, 2, 30, LCD_INK), "canh trai");
-        CHECK(fp_uniform(48, 10, 2, 30, LCD_INK), "canh phai");
-        CHECK(fp_uniform(12, 12, 36, 26, LCD_PAPER), "long phai rong");
+        CHECK(fp_uniform_fb(10, 10, 40, 2, LCD_INK), "canh tren");
+        CHECK(fp_uniform_fb(10, 38, 40, 2, LCD_INK), "canh duoi");
+        CHECK(fp_uniform_fb(10, 10, 2, 30, LCD_INK), "canh trai");
+        CHECK(fp_uniform_fb(48, 10, 2, 30, LCD_INK), "canh phai");
+        CHECK(fp_uniform_fb(12, 12, 36, 26, LCD_PAPER), "long phai rong");
     }
 
     /* ---------------------------------------------------------------- */
@@ -258,17 +258,17 @@ TEST_MAIN_BEGIN("lcd_gfx (TFT)")
         lcd_gfx_clear(LCD_PAPER);
         lcd_gfx_text_box(0, 40, LCD_W, 20, "0", 2, LCD_INK, LCD_PAPER);
         lcd_gfx_flush();
-        const int alone = fp_ink(0, 40, LCD_W, 20);
+        const int alone = fp_ink_fb(0, 40, LCD_W, 20);
         CHECK(alone > 0, "chuoi ngan phai co muc");
 
         lcd_gfx_clear(LCD_PAPER);
         lcd_gfx_text_box(0, 40, LCD_W, 20, "CANH BAO 1", 2, LCD_INK, LCD_PAPER);
         lcd_gfx_flush();
-        CHECK(fp_ink(0, 40, LCD_W, 20) > alone, "chuoi dai phai nhieu muc hon");
+        CHECK(fp_ink_fb(0, 40, LCD_W, 20) > alone, "chuoi dai phai nhieu muc hon");
 
         lcd_gfx_text_box(0, 40, LCD_W, 20, "0", 2, LCD_INK, LCD_PAPER);
         lcd_gfx_flush();
-        CHECK_EQ(fp_ink(0, 40, LCD_W, 20), alone,
+        CHECK_EQ(fp_ink_fb(0, 40, LCD_W, 20), alone,
                  "con sot lai vet cua chuoi dai");
     }
 
@@ -278,8 +278,8 @@ TEST_MAIN_BEGIN("lcd_gfx (TFT)")
         lcd_gfx_clear(LCD_PAPER);
         lcd_gfx_text_box(0, 40, LCD_W, 20, "AN TOAN", 2, LCD_PAPER, LCD_INK);
         lcd_gfx_flush();
-        const int ink   = fp_ink(0, 40, LCD_W, 20);
-        const int paper = fp_count(0, 40, LCD_W, 20, LCD_PAPER);
+        const int ink   = fp_ink_fb(0, 40, LCD_W, 20);
+        const int paper = fp_count_fb(0, 40, LCD_W, 20, LCD_PAPER);
         CHECK(ink > paper, "nen dao phai chu yeu la muc den");
         CHECK(paper > 0, "chu trang phai hien ra tren nen den");
     }

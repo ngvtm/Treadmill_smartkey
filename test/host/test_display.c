@@ -38,16 +38,18 @@ static const treadmill_alert_t kAlerts[] = {
  * gio nen do chu trang nen dem "muc den" khong con dung nua. */
 static int alert_filled(void)
 {
-    return INNER_W * AL_H - fp_count(PAD, AL_Y, INNER_W, AL_H, LCD_PAPER);
+    return INNER_W * AL_H - fp_count_fb(PAD, AL_Y, INNER_W, AL_H, LCD_PAPER);
 }
 #define ALERT_COUNT (int)(sizeof(kAlerts) / sizeof(kAlerts[0]))
 
+/* Hash dai fb (y, h, toan chieu rong) qua anh panel xoay 90 do:
+ * dai fb thanh hinh chu nhat panel (LCD_H-(y+h), 0, h, LCD_W). */
 static unsigned band_hash(const band_t *b)
 {
     unsigned h = 2166136261u;
-    for (int y = b->y; y < b->y + b->h && y < LCD_H; y++) {
-        for (int x = 0; x < LCD_W; x++) {
-            h = (h ^ fp_fb[y][x]) * 16777619u;
+    for (int py = 0; py < LCD_W; py++) {
+        for (int px = LCD_H - (b->y + b->h); px < LCD_H - b->y; px++) {
+            h = (h ^ fp_fb[py][px]) * 16777619u;
         }
     }
     return h;
@@ -172,11 +174,11 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
 
         render(&run, LCD_LINK_CONNECTED, 0, false);
         const unsigned h_run = band_hash(&kBands[1]);
-        const int      speed_ink_run = fp_ink(0, SP_Y, LCD_W, SP_H);
+        const int      speed_ink_run = fp_ink_fb(0, SP_Y, LCD_W, SP_H);
 
         render(&stop, LCD_LINK_CONNECTED, 0, false);
         CHECK(band_hash(&kBands[1]) != h_run, "dai trang thai phai doi");
-        CHECK(fp_ink(0, SP_Y, LCD_W, SP_H) != speed_ink_run,
+        CHECK(fp_ink_fb(0, SP_Y, LCD_W, SP_H) != speed_ink_run,
               "dai toc do phai doi khi may dung");
     }
 
@@ -191,7 +193,7 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
             lcd_gfx_clear(LCD_PAPER);
             draw_bar(by, bh, (uint8_t)level);
             lcd_gfx_flush();
-            const int ink = fp_ink(0, by, LCD_W, bh);
+            const int ink = fp_ink_fb(0, by, LCD_W, bh);
             if (prev >= 0) {
                 CHECK(ink > prev,
                       "level %d khong dam hon level %d (%d so voi %d muc)",
@@ -204,7 +206,7 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
         lcd_gfx_clear(LCD_PAPER);
         draw_bar(by, bh, 0);
         lcd_gfx_flush();
-        CHECK(fp_ink(0, by, LCD_W, bh) > 0,
+        CHECK(fp_ink_fb(0, by, LCD_W, bh) > 0,
               "bar rong van phai thay duoc khung 10 vach");
     }
 
@@ -250,15 +252,15 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
          * trong khi AN TOAN khong co pixel do nao. */
         lcd_status_t safe = {.running = true, .alert = TREADMILL_ALERT_NONE};
         render(&safe, LCD_LINK_CONNECTED, 0, false);
-        const int red_safe = fp_count(PAD, AL_Y, INNER_W, AL_H, LCD_RED);
+        const int red_safe = fp_count_fb(PAD, AL_Y, INNER_W, AL_H, LCD_RED);
         CHECK_EQ(red_safe, 0, "AN TOAN khong duoc co mau do");
 
         lcd_status_t danger = {.running = true, .alert = TREADMILL_ALERT_DANGER};
         render(&danger, LCD_LINK_CONNECTED, 0, false);
-        const int red_danger = fp_count(PAD, AL_Y, INNER_W, AL_H, LCD_RED);
+        const int red_danger = fp_count_fb(PAD, AL_Y, INNER_W, AL_H, LCD_RED);
         CHECK(red_danger > INNER_W * AL_H / 2,
               "NGUY HIEM phai nen do, chiem qua nua o (%d do)", red_danger);
-        const int paper_danger = fp_count(PAD, AL_Y, INNER_W, AL_H, LCD_PAPER);
+        const int paper_danger = fp_count_fb(PAD, AL_Y, INNER_W, AL_H, LCD_PAPER);
         CHECK(paper_danger > 0, "chu trang phai noi tren nen do");
     }
 
