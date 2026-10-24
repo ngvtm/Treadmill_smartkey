@@ -18,7 +18,7 @@ Giữ nguyên vị trí dây của e-paper cũ; chỉ đổi vai trò chân GPIO
 | SDO / MISO | — | không nối (chỉ ghi, không đọc panel) |
 | T_CLK, T_CS, T_DIN, T_DO, T_IRQ (touch XPT2046) | — | **không nối** — có touch nhưng không dùng theo chốt của user |
 
-## Phase 2 — Đấu dây touch XPT2046 (khi dùng menu cảm ứng)
+## Phase 2 — Đấu dây touch XPT2046 (TÙY CHỌN — chỉ khi dùng menu cảm ứng; anh đã chốt không dùng cảm ứng thì bỏ qua toàn bộ mục này, không nối 5 chân touch)
 
 Touch chia sẻ bus SPI với màn hình; chỉ thêm 3 chân:
 
