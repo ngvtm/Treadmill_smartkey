@@ -7,6 +7,8 @@
 #include "console/console.h"
 #include "services/gap/ble_svc_gap.h"
 #include "blecent.h"
+#include "host/ble_sm.h"
+#include <string.h>
 
 #include "ble_client/ble_client.h"
 #include "treadmill_ctrl/treadmill_ctrl.h"
@@ -152,14 +154,49 @@ blecent_scan(void)
     }
 }
 
+/* Kiểm tra địa chỉ quảng cáo có phải peer đã bond không, và có bond
+ * nào đang tồn tại hay không. Store được đọc trực tiếp mỗi lượt quét:
+ * số bond rất ít (thường là 1) nên chi phí không đáng kể. */
+static int
+blecent_bonded_match(const ble_addr_t *addr, int *out_have_bond)
+{
+    ble_addr_t addrs[8];
+    int num = 0;
+    int i;
+
+    *out_have_bond = 0;
+    if (ble_store_util_bonded_peers(addrs, &num, 8) != 0) {
+        return 0;
+    }
+    *out_have_bond = (num > 0);
+    for (i = 0; i < num; i++) {
+        if (ble_addr_cmp(addr, &addrs[i]) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int
 blecent_should_connect(const struct ble_gap_disc_desc *disc)
 {
     struct ble_hs_adv_fields fields;
     int rc;
+    int have_bond = 0;
 
     if (disc->event_type != BLE_HCI_ADV_RPT_EVTYPE_ADV_IND &&
         disc->event_type != BLE_HCI_ADV_RPT_EVTYPE_DIR_IND) {
+        return 0;
+    }
+
+    /* Đã cặp với một server rồi: chỉ kết nối lại đúng server đó,
+     * bỏ qua mọi thiết bị khác kể cả thiết bị quảng cáo cùng UUID
+     * dịch vụ. Chưa có bond: rơi xuống tiêu chí UUID như trước để
+     * thực hiện pairing lần đầu. */
+    if (blecent_bonded_match(&disc->addr, &have_bond)) {
+        return 1;
+    }
+    if (have_bond) {
         return 0;
     }
 
@@ -254,14 +291,17 @@ blecent_gap_event(struct ble_gap_event *event, void *arg)
                 return 0;
             }
 
-#if MYNEWT_VAL(BLE_GATTC)
-            /* Discover services ngay, không cần security */
-            rc = peer_disc_all(event->connect.conn_handle,
-                               blecent_on_disc_complete, NULL);
+            /* Mã hoá trước, discovery sau: characteristic điều khiển
+             * bên server yêu cầu link đã mã hoá (WRITE_ENC). Lần đầu
+             * kết nối, security_initiate chạy pairing và bond được
+             * lưu; lần sau LTK đã lưu được dùng lại. Discovery được
+             * bắt đầu ở BLE_GAP_EVENT_ENC_CHANGE khi mã hoá xong. */
+            rc = ble_gap_security_initiate(event->connect.conn_handle);
             if (rc != 0) {
-                MODLOG_DFLT(ERROR, "Failed to discover services; rc=%d\n", rc);
+                MODLOG_DFLT(ERROR, "Failed to initiate security; rc=%d\n", rc);
+                ble_gap_terminate(event->connect.conn_handle,
+                                  BLE_ERR_REM_USER_CONN_TERM);
             }
-#endif
         } else {
             MODLOG_DFLT(ERROR, "Connection failed; status=%d\n",
                         event->connect.status);
@@ -277,6 +317,24 @@ blecent_gap_event(struct ble_gap_event *event, void *arg)
         peer_delete(event->disconnect.conn.conn_handle);
         /* Tự động scan lại để reconnect */
         blecent_scan();
+        return 0;
+
+    case BLE_GAP_EVENT_ENC_CHANGE:
+        MODLOG_DFLT(INFO, "encryption change; status=%d\n",
+                    event->enc_change.status);
+        if (event->enc_change.status != 0) {
+            MODLOG_DFLT(ERROR, "encryption failed, terminate connection\n");
+            ble_gap_terminate(event->enc_change.conn_handle,
+                              BLE_ERR_REM_USER_CONN_TERM);
+            return 0;
+        }
+#if MYNEWT_VAL(BLE_GATTC)
+        rc = peer_disc_all(event->enc_change.conn_handle,
+                           blecent_on_disc_complete, NULL);
+        if (rc != 0) {
+            MODLOG_DFLT(ERROR, "Failed to discover services; rc=%d\n", rc);
+        }
+#endif
         return 0;
 
     case BLE_GAP_EVENT_DISC_COMPLETE:
@@ -325,8 +383,11 @@ blecent_on_sync(void)
     rc = ble_hs_util_ensure_addr(0);
     assert(rc == 0);
 
-    /* ★ Gọi SAU ensure_addr */
-    ble_store_clear();
+    /* ★ Gọi SAU ensure_addr.
+     * KHÔNG gọi ble_store_clear() ở đây nữa: hàm đó xoá toàn bộ bond
+     * đã lưu mỗi lần boot — gốc rễ của lỗi "pairing không lưu được
+     * key". Store phải sống qua khởi động lại; chỉ xoá khi unpair
+     * chủ động. */
 
     blecent_scan();
 }
@@ -377,13 +438,16 @@ app_main(void)
 #endif
     assert(m == 0);
 
-    /* ★ FIX: Tắt hoàn toàn bonding/security */
-    ble_hs_cfg.sm_bonding        = 0;
+    /* Bảo mật: bật bonding + LE Secure Connections và phân phối khoá
+     * ENC + ID ở cả 2 phía (phải khớp cấu hình bên server). Chỉ khi
+     * key_dist != 0 thì LTK mới được trao và lưu vào store. MITM = 0
+     * (Just Works) cho phase này. */
+    ble_hs_cfg.sm_bonding        = 1;
     ble_hs_cfg.sm_mitm           = 0;
-    ble_hs_cfg.sm_sc             = 0;
+    ble_hs_cfg.sm_sc             = 1;
     ble_hs_cfg.sm_io_cap         = BLE_HS_IO_NO_INPUT_OUTPUT;
-    ble_hs_cfg.sm_our_key_dist   = 0;
-    ble_hs_cfg.sm_their_key_dist = 0;
+    ble_hs_cfg.sm_our_key_dist   = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+    ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
 
 #if CONFIG_BT_NIMBLE_GAP_SERVICE
     m = ble_svc_gap_device_name_set("treadmill-smartkey");
