@@ -31,8 +31,7 @@ static const treadmill_alert_t kAlerts[] = {
     TREADMILL_ALERT_NONE, TREADMILL_ALERT_WARNING_1,
     TREADMILL_ALERT_WARNING_2, TREADMILL_ALERT_DANGER,
     TREADMILL_ALERT_NO_PERSON, TREADMILL_ALERT_CMD_REJECTED,
-    /* SAFETY_KEY_OUT lives on feat/reed-safety-key; it joins this list
-     * when that branch merges. */
+    TREADMILL_ALERT_SAFETY_KEY_OUT,
 };
 
 /* So pixel khong phai nen trang trong dai canh bao: dai nghiem trong
