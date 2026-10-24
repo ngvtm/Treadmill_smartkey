@@ -61,6 +61,7 @@ static bool s_have_speed = false;
 #endif
 static uint8_t s_display_alert = TREADMILL_ALERT_NONE;
 static uint32_t s_alert_hold_until_ms = 0;
+static uint8_t s_features_off_mask = 0;
 
 static bool alert_is_severe(uint8_t alert)
 {
@@ -87,6 +88,7 @@ static void push_to_lcd(void)
         .zone            = s_server_zone,
         .alert           = (treadmill_alert_t)s_display_alert,
         .signal_lost     = s_signal_lost,
+        .features_off_mask = s_features_off_mask,
     };
     lcd_display_set_status(&st);
 }
@@ -168,6 +170,7 @@ void treadmill_ctrl_init(void)
     s_server_alert = TREADMILL_ALERT_NONE;
     s_display_alert = TREADMILL_ALERT_NONE;
     s_alert_hold_until_ms = 0;
+    s_features_off_mask = 0;
     s_on_pending = false;
     s_have_status = false;
     s_signal_lost = false;
@@ -365,9 +368,18 @@ bool treadmill_ctrl_is_running(void)
     return s_server_running;
 }
 
+uint8_t treadmill_ctrl_get_features_off_mask(void)
+{
+    return s_features_off_mask;
+}
+
 void treadmill_ctrl_handle_status(const uint8_t *data, uint16_t len)
 {
-    if (len != sizeof(treadmill_status_msg_t)) {
+    // Phase 2: accept both the old 7-byte status (mask reads 0) and
+    // the new 8-byte status. The mask byte is read from the raw
+    // buffer, not through the struct, so a 7-byte packet is never
+    // read past its end.
+    if (len != 7 && len != sizeof(treadmill_status_msg_t)) {
         ESP_LOGW(TAG, "Ignore invalid status len=%u", len);
         return;
     }
@@ -377,6 +389,7 @@ void treadmill_ctrl_handle_status(const uint8_t *data, uint16_t len)
         ESP_LOGW(TAG, "Ignore unknown msg type=0x%02X", msg->type);
         return;
     }
+    s_features_off_mask = (len >= 8) ? data[7] : 0;
 
     // Fresh status clears the staleness lock and (re)starts its clock.
     uint32_t now = now_ms();

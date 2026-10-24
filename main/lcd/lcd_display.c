@@ -183,9 +183,43 @@ static int alert_weight(treadmill_alert_t alert)
     }
 }
 
-static void draw_alert(treadmill_alert_t alert)
+// Mirror of the ctrl layer's severe set (S1.6 hold set): these alerts
+// keep the band even when features are OFF.
+static bool alert_is_severe_for_display(treadmill_alert_t alert)
+{
+    return alert == TREADMILL_ALERT_DANGER ||
+           alert == TREADMILL_ALERT_NO_PERSON ||
+           alert == TREADMILL_ALERT_SAFETY_KEY_OUT ||
+           alert == TREADMILL_ALERT_MOTOR_FAULT;
+}
+
+// Phase 2: the persistent safety-off warning. When any feature is OFF
+// and no severe alert is on screen, the alert band shows the warning
+// instead of "AN TOAN" — it must be impossible to forget. A severe
+// alert always wins while it is displayed (it holds 3 s, then the
+// warning returns). The palette has no amber, so the warning uses the
+// red band like a severe alert; the text is what distinguishes it.
+static void draw_alert(treadmill_alert_t alert, uint8_t features_off_mask)
 {
     const char *l1, *l2;
+
+    if (features_off_mask != 0 && !alert_is_severe_for_display(alert)) {
+        l1 = "CO TINH NANG";
+        l2 = "AN TOAN DANG TAT";
+        lcd_gfx_fill_rect(PAD, AL_Y, INNER_W, AL_H, LCD_RED);
+        lcd_gfx_rect(PAD, AL_Y, INNER_W, AL_H, 2, LCD_RED);
+        const int inset = 6;
+        const int bx    = PAD + inset;
+        const int bw    = INNER_W - 2 * inset;
+        const int s1    = lcd_gfx_fit_scale(l1, bw, 3);
+        const int s2    = lcd_gfx_fit_scale(l2, bw, 2);
+        const int th    = s1 * LCD_GLYPH_H + s2 * LCD_GLYPH_H + 2;
+        int       y     = AL_Y + (AL_H - th) / 2;
+        lcd_gfx_text_center(bx, bw, y, l1, s1, LCD_PAPER, LCD_RED);
+        lcd_gfx_text_center(bx, bw, y + s1 * LCD_GLYPH_H + 2,
+                            l2, s2, LCD_PAPER, LCD_RED);
+        return;
+    }
 
     switch (alert) {
     case TREADMILL_ALERT_NONE:
@@ -241,7 +275,7 @@ static void render(const lcd_status_t *st, lcd_link_state_t link)
     draw_header(link);
     draw_state(st);
     draw_speed(st);
-    draw_alert(st->alert);
+    draw_alert(st->alert, st->features_off_mask);
     lcd_gfx_flush();
 
     const uint32_t dropped = lcd_gfx_dropped();
@@ -260,7 +294,38 @@ static bool changed(const lcd_status_t *a, const lcd_status_t *b)
         || a->safety_limited  != b->safety_limited
         || a->zone            != b->zone
         || a->alert           != b->alert
-        || a->signal_lost     != b->signal_lost;
+        || a->signal_lost     != b->signal_lost
+        || a->features_off_mask != b->features_off_mask;
+}
+
+// Phase 2: while the touch menu owns the screen, the normal render
+// loop must not paint over it. The menu sets this flag (under the
+// same lock) and draws via lcd_gfx directly; on exit it clears the
+// flag and forces a full repaint of the normal frame.
+static bool s_paused = false;
+
+void lcd_display_pause(void)
+{
+    if (s_lock == NULL) {
+        return;
+    }
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_paused = true;
+    xSemaphoreGive(s_lock);
+}
+
+void lcd_display_resume(void)
+{
+    if (s_lock == NULL) {
+        return;
+    }
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_paused = false;
+    s_have_shown = false;  // force a full repaint of the normal frame
+    xSemaphoreGive(s_lock);
+    if (s_task != NULL) {
+        xTaskNotifyGive(s_task);
+    }
 }
 
 static void lcd_task(void *arg)
@@ -276,6 +341,11 @@ static void lcd_task(void *arg)
 
     while (1) {
         esp_task_wdt_reset();
+        if (s_paused) {
+            // Menu owns the screen: sleep, do not render.
+            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(200));
+            continue;
+        }
         lcd_status_t     st;
         lcd_link_state_t link;
 

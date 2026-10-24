@@ -27,6 +27,11 @@ typedef enum {
 } treadmill_alert_t;
 
 typedef struct __attribute__((packed)) {
+// Phase 2: the server's 8th status byte is features_off_mask (bit i
+// set = feature i OFF). Old 7-byte statuses are still accepted, with
+// the mask read as 0 (all features ON — correct, since old servers
+// have no settings at all).
+typedef struct {
     uint8_t type;
     uint8_t running;
     uint8_t speed;
@@ -34,6 +39,7 @@ typedef struct __attribute__((packed)) {
     uint8_t safety_limited;
     uint8_t zone;
     uint8_t alert;
+    uint8_t features_off_mask;
 } treadmill_status_msg_t;
 
 void treadmill_ctrl_init(void);
@@ -53,6 +59,10 @@ void treadmill_ctrl_speed_up(void);
 void treadmill_ctrl_speed_down(void);
 void treadmill_ctrl_handle_status(const uint8_t *data, uint16_t len);
 bool treadmill_ctrl_is_running(void);
+/* Latest features_off_mask from the server (0 = all safety features
+ * ON). The touch menu reads it to paint its toggles; the display
+ * reads it for the persistent safety-off warning. */
+uint8_t treadmill_ctrl_get_features_off_mask(void);
 
 #ifdef __cplusplus
 }
