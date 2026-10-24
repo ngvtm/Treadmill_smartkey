@@ -108,6 +108,17 @@ menu "Smartkey Control"
             status reports something else, so the runner can read it.
             After the window, the latest alert wins.
 
+    config TREADMILL_SMARTKEY_WDT_TIMEOUT_S
+        int "Task watchdog timeout for LCD/button/ctrl tasks (seconds)"
+        default 2
+        range 1 60
+        help
+            Phase 1, S1.5: the LCD, button and ctrl tick tasks must
+            feed the task watchdog within this time or the key
+            resets (panic). 2 s is safe here because all three loop
+            in <= 1 s even when idle. Software net only — it does
+            not replace the server-side hardware interlock.
+
 endmenu
 
 menu "Smartkey TFT Display"

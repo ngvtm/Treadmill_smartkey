@@ -3,6 +3,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 
 #define TAG              "BUTTON"
 #define POLL_MS          20
@@ -36,7 +37,10 @@ static const button_sm_cfg_t s_sm_cfg = {
 static void btn_task(void *arg)
 {
     (void)arg;
+    // Phase 1, S1.5: watchdog-supervised (see app_main).
+    esp_task_wdt_add(NULL);
     while (1) {
+        esp_task_wdt_reset();
         uint32_t now_ms =
             (uint32_t)((uint64_t)xTaskGetTickCount() * 1000u / configTICK_RATE_HZ);
         for (int i = 0; i < BUTTON_ID_MAX; i++) {
