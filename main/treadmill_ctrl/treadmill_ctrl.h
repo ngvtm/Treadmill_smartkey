@@ -23,6 +23,7 @@ typedef enum {
     TREADMILL_ALERT_NO_PERSON,
     TREADMILL_ALERT_CMD_REJECTED,
     TREADMILL_ALERT_SAFETY_KEY_OUT,  /* = 6: reed breakaway key pulled / not docked */
+    TREADMILL_ALERT_MOTOR_FAULT,     /* = 7: stall / overcurrent / no-motion (GĐ2) */
 } treadmill_alert_t;
 
 typedef struct __attribute__((packed)) {
