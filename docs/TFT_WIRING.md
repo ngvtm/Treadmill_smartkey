@@ -16,9 +16,9 @@ Giữ nguyên vị trí dây của e-paper cũ; chỉ đổi vai trò chân GPIO
 | SCK | GPIO32 | như cũ |
 | LED / BL | GPIO4 | chân BUSY cũ của e-paper — nay là đèn nền, firmware bật sau khi init xong |
 | SDO / MISO | — | không nối (chỉ ghi, không đọc panel) |
-| T_CLK, T_CS, T_DIN, T_DO, T_IRQ (touch XPT2046) | — | **không nối** — có touch nhưng không dùng theo chốt của user |
+| T_CLK, T_CS, T_DIN, T_DO, T_IRQ (touch XPT2046) | xem mục Phase 2 | **BẮT BUỘC từ Phase 1** — cảm ứng là điều khiển chính, không nối thì không khởi động/đổi tốc được |
 
-## Phase 2 — Đấu dây touch XPT2046 (TÙY CHỌN — chỉ khi dùng menu cảm ứng; anh đã chốt không dùng cảm ứng thì bỏ qua toàn bộ mục này, không nối 5 chân touch)
+## Phase 2 — Đấu dây touch XPT2046 (BẮT BUỘC từ Phase 1 — cảm ứng là điều khiển chính: menu + thanh điều khiển màn chính; bỏ qua toàn bộ mục này thì máy không khởi động/đổi tốc được)
 
 Touch chia sẻ bus SPI với màn hình; chỉ thêm 3 chân:
 
@@ -57,9 +57,11 @@ chuẩn → hiệu chuẩn 3 dấu + trước màn chính; bỏ qua 60 s → b�
 "CHUA HIEU CHUAN" trên màn chính.
 
 Phím cứng không còn điều khiển máy chạy: GPIO21 = nguồn (giữ 2 s = standby phần mềm:
-màn tắt + gửi OFF + chờ 300 ms + ngắt BLE; bấm = dậy + quét BLE lại), GPIO22/23 = DỪNG
-KHẨN CẤP (chạm = OFF tức thì, kể cả trong menu; trong standby thì máy đã dừng rồi nên
-không tác dụng). Nguồn USB giai đoạn này chưa cắt điện thật — xem
+màn tắt + gửi OFF + chờ 300 ms + ngắt BLE; bấm = dậy + quét BLE lại), GPIO22 = DỪNG
+KHẨN CẤP duy nhất (chạm = OFF tức thì, kể cả trong menu; trong standby thì máy đã dừng
+rồi nên không tác dụng) — chỉ cần nối 1 nút này, GPIO23 để trống (code vẫn nhận GPIO23
+là dừng khẩn cấp nếu sau này anh nối thêm, chân để trống có pull-up nên không tự kích).
+Nguồn USB giai đoạn này chưa cắt điện thật — xem
 `TOUCH_CONTROLS_POWER_DESIGN.md` mục 6.
 
 ## Cấu hình firmware
