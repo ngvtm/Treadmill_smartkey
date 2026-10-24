@@ -191,6 +191,59 @@ TEST_MAIN_BEGIN("treadmill_ctrl")
     }
 
     /* ---------------------------------------------------------------- */
+    TEST("S1.1: lenh toc do bi chan khi alert thuoc nhom dung cung");
+    {
+        const uint8_t hard_alerts[] = {
+            TREADMILL_ALERT_DANGER, TREADMILL_ALERT_NO_PERSON,
+            TREADMILL_ALERT_SAFETY_KEY_OUT, TREADMILL_ALERT_CMD_REJECTED,
+        };
+        for (int i = 0; i < 4; i++) {
+            reset_all(true);
+            treadmill_ctrl_toggle();          /* bat dieu khien */
+            send_status(1, 3, 3, 0, 1, hard_alerts[i]);
+            s_sent_n = 0;
+            treadmill_ctrl_speed_up();
+            treadmill_ctrl_speed_down();
+            CHECK_EQ(s_sent_n, 0, "van gui lenh toc do duoi alert dung cung");
+        }
+    }
+
+    /* ---------------------------------------------------------------- */
+    TEST("S1.1: WARNING_1/WARNING_2 khong chan lenh toc do o smartkey");
+    {
+        reset_all(true);
+        treadmill_ctrl_toggle();
+        send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_WARNING_2);
+        s_sent_n = 0;
+        treadmill_ctrl_speed_up();
+        treadmill_ctrl_speed_down();
+        CHECK_EQ(s_sent_n, 2, "WARNING khong duoc chan giam toc bang tay");
+    }
+
+    /* ---------------------------------------------------------------- */
+    TEST("S1.1: ON bi chan khi khoa an toan dang bi but ra");
+    {
+        reset_all(true);
+        send_status(0, 0, 0, 0, 0, TREADMILL_ALERT_SAFETY_KEY_OUT);
+        treadmill_ctrl_toggle();              /* dinh bat */
+        CHECK_EQ(s_sent_n, 0, "van gui ON du khoa an toan dang mo");
+        CHECK_EQ(s_lcd.control_enabled, 0, "dieu khien van bat du ON bi chan");
+    }
+
+    /* ---------------------------------------------------------------- */
+    TEST("S1.1: OFF khong bao gio bi chan, ke ca khi dang DANGER");
+    {
+        reset_all(true);
+        treadmill_ctrl_toggle();              /* bat */
+        send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_DANGER);
+        s_sent_n = 0;
+        treadmill_ctrl_toggle();              /* tat */
+        CHECK_EQ(s_sent_n, 1, "OFF phai luon gui duoc");
+        CHECK_EQ(s_sent[0], TREADMILL_CMD_OFF, "lenh phai la OFF");
+        CHECK_EQ(s_lcd.control_enabled, 0, "dieu khien phai tat sau OFF");
+    }
+
+    /* ---------------------------------------------------------------- */
     TEST("Mat ket noi -> xoa het so lieu cu tren man hinh");
     {
         reset_all(true);
