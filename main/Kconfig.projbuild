@@ -87,6 +87,17 @@ menu "Smartkey Control"
             so a wedged key cannot keep stepping the speed or start
             the belt on its own.
 
+    config TREADMILL_CTRL_RSSI_MIN_DBM
+        int "RSSI start gate: refuse ON when link is weaker than (dBm)"
+        default -75
+        range -100 -20
+        help
+            Phase 1, S1.4: ON only, never OFF/reconnect/running. The
+            default is deliberately loose; calibrate on real hardware
+            (RSSI beside the belt vs. from the next room) and drop
+            the gate if RSSI cannot tell them apart. A failed RSSI
+            read fails open with a warning log.
+
 endmenu
 
 menu "Smartkey TFT Display"

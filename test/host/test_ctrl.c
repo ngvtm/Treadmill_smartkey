@@ -30,6 +30,19 @@ int ble_client_write_command(uint8_t cmd)
     return s_write_rc;
 }
 
+/* ---- RSSI gia (S1.4) ---- */
+static int s_rssi_dbm = -50;
+static int s_rssi_rc = 0;
+
+int ble_client_get_rssi(int8_t *out_rssi)
+{
+    if (s_rssi_rc != 0) {
+        return s_rssi_rc;
+    }
+    *out_rssi = (int8_t)s_rssi_dbm;
+    return 0;
+}
+
 /* ---- FreeRTOS gia: dong ho dieu khien duoc bang tay ---- */
 static uint32_t s_fake_tick_ms;
 
@@ -75,6 +88,8 @@ static void reset_all(bool ready)
     s_sent_n      = 0;
     s_lcd_updates = 0;
     s_fake_tick_ms = 0;
+    s_rssi_dbm    = -50;
+    s_rssi_rc     = 0;
     memset(s_sent, 0, sizeof(s_sent));
     treadmill_ctrl_init();
     s_lcd_updates = 0;
@@ -402,6 +417,39 @@ TEST_MAIN_BEGIN("treadmill_ctrl")
         treadmill_ctrl_speed_down();
         CHECK_EQ(s_sent_n, 2, "du 300 ms thi gui duoc nac tiep");
         CHECK_EQ(s_sent[1], TREADMILL_CMD_SPEED_DOWN, "nac tiep phai la DOWN");
+    }
+
+    /* ---------------------------------------------------------------- */
+    TEST("S1.4: ON bi chan khi RSSI yeu hon -75 dBm, dung nguong thi duoc");
+    {
+        reset_all(true);
+        s_rssi_dbm = -80;
+        treadmill_ctrl_request_on();
+        CHECK_EQ(s_sent_n, 0, "RSSI -80 van gui ON");
+
+        s_rssi_dbm = -75;
+        treadmill_ctrl_request_on();
+        CHECK_EQ(s_sent_n, 1, "RSSI dung -75 phai gui duoc ON");
+        CHECK_EQ(s_sent[0], TREADMILL_CMD_ON, "lenh phai la ON");
+    }
+
+    /* ---------------------------------------------------------------- */
+    TEST("S1.4: RSSI doc loi thi fail open, OFF va toc do khong bi cong");
+    {
+        reset_all(true);
+        s_rssi_rc = -1;
+        treadmill_ctrl_request_on();
+        CHECK_EQ(s_sent_n, 1, "RSSI loi thi ON van phai gui (fail open)");
+
+        confirm_on();                     /* RSSI loi nhung van xac nhan */
+        s_rssi_dbm = -90;                 /* yeu, nhung dang chay roi */
+        s_rssi_rc = 0;
+        s_sent_n = 0;
+        treadmill_ctrl_speed_up();
+        CHECK_EQ(s_sent_n, 1, "RSSI yeu giua luc chay van tang toc duoc");
+        treadmill_ctrl_request_off();
+        CHECK_EQ(s_sent_n, 2, "RSSI yeu van OFF duoc");
+        CHECK_EQ(s_sent[1], TREADMILL_CMD_OFF, "lenh phai la OFF");
     }
 
     /* ---------------------------------------------------------------- */
