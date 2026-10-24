@@ -30,13 +30,36 @@ static const ble_uuid_t *remote_chr_uuid =
                         0x22, 0x22, 0x22, 0x22, 0x33, 0x33, 0x33, 0x33);
 #endif
 
-static void on_button_pressed(button_id_t id)
+/* Phase 1, S1.3: a quick press can only stop the machine; starting it
+ * needs the HOLD event (toggle held >= 1.5 s). Speed buttons act on
+ * PRESS only — a held speed button does not repeat steps. */
+static void on_button_event(button_id_t id, button_event_t event)
 {
     switch (id) {
-    case BUTTON_ID_TOGGLE:     treadmill_ctrl_toggle();     break;
-    case BUTTON_ID_SPEED_UP:   treadmill_ctrl_speed_up();   break;
-    case BUTTON_ID_SPEED_DOWN: treadmill_ctrl_speed_down(); break;
-    default:                   break;
+    case BUTTON_ID_TOGGLE:
+        if (event == BTN_EV_PRESS) {
+            if (treadmill_ctrl_is_control_active() ||
+                treadmill_ctrl_is_running()) {
+                treadmill_ctrl_request_off();
+            } else {
+                ESP_LOGI(tag, "Quick toggle press while stopped: hold 1.5 s to start");
+            }
+        } else if (event == BTN_EV_HOLD) {
+            treadmill_ctrl_request_on();
+        }
+        break;
+    case BUTTON_ID_SPEED_UP:
+        if (event == BTN_EV_PRESS) {
+            treadmill_ctrl_speed_up();
+        }
+        break;
+    case BUTTON_ID_SPEED_DOWN:
+        if (event == BTN_EV_PRESS) {
+            treadmill_ctrl_speed_down();
+        }
+        break;
+    default:
+        break;
     }
 }
 
@@ -458,7 +481,7 @@ app_main(void)
 
     ble_client_init();
     treadmill_ctrl_init();
-    button_init(on_button_pressed);
+    button_init(on_button_event);
 
     nimble_port_freertos_init(blecent_host_task);
 }

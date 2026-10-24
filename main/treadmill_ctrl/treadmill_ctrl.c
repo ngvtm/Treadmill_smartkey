@@ -14,6 +14,11 @@
 #ifndef CONFIG_TREADMILL_CTRL_STATUS_STALE_MS
 #define CONFIG_TREADMILL_CTRL_STATUS_STALE_MS 2000
 #endif
+/* Phase 1, S1.3: at most one speed step per this interval, across both
+ * directions (a burst of presses must not jump the speed). */
+#ifndef CONFIG_TREADMILL_CTRL_SPEED_RATE_LIMIT_MS
+#define CONFIG_TREADMILL_CTRL_SPEED_RATE_LIMIT_MS 300
+#endif
 
 #define CTRL_TICK_MS 100
 
@@ -35,6 +40,9 @@ static uint32_t s_on_deadline_ms = 0;
 static bool s_have_status = false;
 static uint32_t s_last_status_ms = 0;
 static bool s_signal_lost = false;
+/* S1.3 speed rate limit. */
+static uint32_t s_last_speed_ms = 0;
+static bool s_have_speed = false;
 
 static uint32_t now_ms(void)
 {
@@ -125,6 +133,7 @@ void treadmill_ctrl_init(void)
     s_on_pending = false;
     s_have_status = false;
     s_signal_lost = false;
+    s_have_speed = false;
     push_to_lcd();
     ESP_LOGI(TAG, "initialized (control=OFF)");
 
@@ -155,37 +164,47 @@ static bool alert_blocks_on(uint8_t alert)
     return alert == TREADMILL_ALERT_SAFETY_KEY_OUT;
 }
 
-void treadmill_ctrl_toggle(void)
+/* Phase 1, S1.3: the old single toggle() is split. A quick press can
+ * only ever turn the machine OFF; turning it ON requires the HOLD event
+ * from the button layer, so a child tapping the key once cannot start
+ * the belt. */
+void treadmill_ctrl_request_off(void)
 {
     if (!ble_client_is_ready()) {
-        ESP_LOGW(TAG, "BLE not ready, ignore toggle");
+        ESP_LOGW(TAG, "BLE not ready, ignore OFF");
+        return;
+    }
+
+    evaluate_timeouts(now_ms());
+
+    // OFF is never gated; a pending ON is cancelled by it. On BLE write
+    // failure the OFF is retried once, and control keeps its old state
+    // until a write actually goes out (the display keeps showing the
+    // server's running state until a status confirms the stop).
+    int rc = ble_client_write_command(TREADMILL_CMD_OFF);
+    if (rc != 0) {
+        rc = ble_client_write_command(TREADMILL_CMD_OFF);
+    }
+    if (rc == 0) {
+        s_enabled = false;
+        s_on_pending = false;
+        push_to_lcd();
+        ESP_LOGI(TAG, "Treadmill control: OFF");
+    } else {
+        ESP_LOGE(TAG, "OFF failed twice, keep control=%s",
+                 s_enabled ? "ON" : "OFF");
+    }
+}
+
+void treadmill_ctrl_request_on(void)
+{
+    if (!ble_client_is_ready()) {
+        ESP_LOGW(TAG, "BLE not ready, ignore ON");
         return;
     }
 
     uint32_t now = now_ms();
     evaluate_timeouts(now);
-
-    // OFF path: control ON, or an ON still awaiting confirmation.
-    // OFF is never gated; a pending ON is cancelled by it. On BLE write
-    // failure the OFF is retried once, and control keeps its old state
-    // until a write actually goes out (the display keeps showing the
-    // server's running state until a status confirms the stop).
-    if (s_enabled || s_on_pending) {
-        int rc = ble_client_write_command(TREADMILL_CMD_OFF);
-        if (rc != 0) {
-            rc = ble_client_write_command(TREADMILL_CMD_OFF);
-        }
-        if (rc == 0) {
-            s_enabled = false;
-            s_on_pending = false;
-            push_to_lcd();
-            ESP_LOGI(TAG, "Treadmill control: OFF");
-        } else {
-            ESP_LOGE(TAG, "OFF failed twice, keep control=%s",
-                     s_enabled ? "ON" : "OFF");
-        }
-        return;
-    }
 
     // ON path: S1.1 gate + S1.2 staleness gate, then pending-confirm.
     if (s_signal_lost) {
@@ -210,11 +229,35 @@ void treadmill_ctrl_toggle(void)
     }
 }
 
+bool treadmill_ctrl_is_control_active(void)
+{
+    return s_enabled || s_on_pending;
+}
+
+/* S1.3 rate limit, shared by both directions. Returns false when the
+ * caller must refuse the step. */
+static bool speed_rate_ok(uint32_t now)
+{
+    if (s_have_speed &&
+        now - s_last_speed_ms < CONFIG_TREADMILL_CTRL_SPEED_RATE_LIMIT_MS) {
+        return false;
+    }
+    s_have_speed = true;
+    s_last_speed_ms = now;
+    return true;
+}
+
 void treadmill_ctrl_speed_up(void)
 {
-    evaluate_timeouts(now_ms());
+    uint32_t now = now_ms();
+    evaluate_timeouts(now);
     if (!s_enabled || !ble_client_is_ready()) {
         ESP_LOGW(TAG, "Ignore SPEED_UP: control disabled or BLE not ready");
+        return;
+    }
+    if (!speed_rate_ok(now)) {
+        ESP_LOGW(TAG, "Refuse SPEED_UP: rate limited to 1 step per %d ms",
+                 CONFIG_TREADMILL_CTRL_SPEED_RATE_LIMIT_MS);
         return;
     }
 
@@ -232,9 +275,15 @@ void treadmill_ctrl_speed_up(void)
 
 void treadmill_ctrl_speed_down(void)
 {
-    evaluate_timeouts(now_ms());
+    uint32_t now = now_ms();
+    evaluate_timeouts(now);
     if (!s_enabled || !ble_client_is_ready()) {
         ESP_LOGW(TAG, "Ignore SPEED_DOWN: control disabled or BLE not ready");
+        return;
+    }
+    if (!speed_rate_ok(now)) {
+        ESP_LOGW(TAG, "Refuse SPEED_DOWN: rate limited to 1 step per %d ms",
+                 CONFIG_TREADMILL_CTRL_SPEED_RATE_LIMIT_MS);
         return;
     }
 

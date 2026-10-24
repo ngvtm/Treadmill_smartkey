@@ -36,7 +36,14 @@ typedef struct __attribute__((packed)) {
 } treadmill_status_msg_t;
 
 void treadmill_ctrl_init(void);
-void treadmill_ctrl_toggle(void);
+/* Phase 1, S1.3: quick press = OFF only; ON requires a HOLD event.
+ * (The old single toggle() is gone: its two halves had different gates
+ * and different confirmation rules, and one function hid that.) */
+void treadmill_ctrl_request_on(void);
+void treadmill_ctrl_request_off(void);
+/* True while control is ON or an ON is awaiting confirmation — used by
+ * the button layer to decide whether a quick press means OFF. */
+bool treadmill_ctrl_is_control_active(void);
 /* Periodic timeout evaluation (ON-confirm window, status staleness).
  * Called every 100 ms by the ctrl tick task; tests call it directly
  * after advancing the fake clock. */

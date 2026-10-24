@@ -59,6 +59,34 @@ menu "Smartkey Control"
             MAT TIN HIEU and control locks until a fresh status
             arrives.
 
+    config TREADMILL_CTRL_SPEED_RATE_LIMIT_MS
+        int "Speed buttons: minimum time between steps (ms)"
+        default 300
+        range 0 2000
+        help
+            Phase 1, S1.3: SPEED_UP/DOWN together allow at most one
+            step per this interval, so a burst of presses cannot
+            jump the speed.
+
+    config TREADMILL_BUTTON_HOLD_START_MS
+        int "Hold-to-start: toggle must be held this long to send ON (ms)"
+        default 1500
+        range 500 5000
+        help
+            Phase 1, S1.3: a quick toggle press while stopped does
+            nothing; only holding the toggle sends ON. A quick press
+            while running still sends OFF immediately.
+
+    config TREADMILL_BUTTON_STUCK_MS
+        int "Stuck button: held this long means stuck, ignore until release (ms)"
+        default 5000
+        range 1000 30000
+        help
+            Phase 1, S1.3: a button held past this time (or already
+            pressed at boot) fires no further events until released,
+            so a wedged key cannot keep stepping the speed or start
+            the belt on its own.
+
 endmenu
 
 menu "Smartkey TFT Display"
