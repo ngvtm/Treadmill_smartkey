@@ -38,6 +38,29 @@ menu "Example Configuration"
             Use this option to advertise in a specific random address.
 endmenu
 
+menu "Smartkey Control"
+
+    config TREADMILL_CTRL_ON_CONFIRM_TIMEOUT_MS
+        int "ON confirm timeout: status must confirm ON within (ms)"
+        default 2000
+        range 500 10000
+        help
+            Phase 1, S1.2: sending ON no longer turns control on
+            immediately. A status with running=1 must arrive within
+            this window, or control stays OFF. No auto-retry.
+
+    config TREADMILL_CTRL_STATUS_STALE_MS
+        int "Status staleness: no status within (ms) means signal lost"
+        default 2000
+        range 500 10000
+        help
+            Phase 1, S1.2: a connected server that stops sending
+            status is treated as signal lost — the display shows
+            MAT TIN HIEU and control locks until a fresh status
+            arrives.
+
+endmenu
+
 menu "Smartkey TFT Display"
 
     choice TFT_PANEL_DRIVER

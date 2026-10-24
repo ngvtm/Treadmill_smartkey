@@ -5,6 +5,8 @@
 #include "test_util.h"
 #include "treadmill_ctrl.h"
 #include "lcd/lcd_display.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include <stdbool.h>
 #include <string.h>
@@ -28,6 +30,29 @@ int ble_client_write_command(uint8_t cmd)
     return s_write_rc;
 }
 
+/* ---- FreeRTOS gia: dong ho dieu khien duoc bang tay ---- */
+static uint32_t s_fake_tick_ms;
+
+TickType_t xTaskGetTickCount(void)
+{
+    return (TickType_t)(s_fake_tick_ms * configTICK_RATE_HZ / 1000);
+}
+
+int xTaskCreate(TaskFunction_t fn, const char *name, uint32_t stack,
+                void *arg, uint32_t prio, TaskHandle_t *out)
+{
+    (void)fn; (void)name; (void)stack; (void)arg; (void)prio; (void)out;
+    return 1; /* task tick khong chay trong test; test goi tick truc tiep */
+}
+
+void vTaskDelay(TickType_t ticks) { (void)ticks; }
+
+static void advance_ms(uint32_t ms)
+{
+    s_fake_tick_ms += ms;
+    treadmill_ctrl_tick();
+}
+
 /* ---- lcd_display gia ---- */
 static lcd_status_t s_lcd;
 static int          s_lcd_updates;
@@ -49,6 +74,7 @@ static void reset_all(bool ready)
     s_write_rc    = 0;
     s_sent_n      = 0;
     s_lcd_updates = 0;
+    s_fake_tick_ms = 0;
     memset(s_sent, 0, sizeof(s_sent));
     treadmill_ctrl_init();
     s_lcd_updates = 0;
@@ -67,6 +93,13 @@ static void send_status(uint8_t running, uint8_t speed, uint8_t req,
         .alert           = alert,
     };
     treadmill_ctrl_handle_status((const uint8_t *)&m, sizeof(m));
+}
+
+/* Bat dieu khien theo dung nghia S1.2: gui ON roi nhan status xac nhan. */
+static void confirm_on(void)
+{
+    treadmill_ctrl_toggle();
+    send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_NONE);
 }
 
 TEST_MAIN_BEGIN("treadmill_ctrl")
@@ -89,13 +122,16 @@ TEST_MAIN_BEGIN("treadmill_ctrl")
     }
 
     /* ---------------------------------------------------------------- */
-    TEST("Toggle bat/tat gui dung ma lenh");
+    TEST("Toggle bat/tat gui dung ma lenh (S1.2: ON cho xac nhan)");
     {
         reset_all(true);
         treadmill_ctrl_toggle();
         CHECK_EQ(s_sent_n, 1, "toggle lan 1 phai gui 1 lenh");
         CHECK_EQ(s_sent[0], TREADMILL_CMD_ON, "lenh dau phai la ON");
-        CHECK_EQ(s_lcd.control_enabled, 1, "man hinh phai hien DIEU KHIEN BAT");
+        CHECK_EQ(s_lcd.control_enabled, 0, "ON chua xac nhan thi chua bat");
+
+        send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_NONE);
+        CHECK_EQ(s_lcd.control_enabled, 1, "status chay phai xac nhan ON");
 
         treadmill_ctrl_toggle();
         CHECK_EQ(s_sent[1], TREADMILL_CMD_OFF, "lenh sau phai la OFF");
@@ -125,7 +161,7 @@ TEST_MAIN_BEGIN("treadmill_ctrl")
         treadmill_ctrl_speed_down();
         CHECK_EQ(s_sent_n, 0, "gui lenh toc do khi dieu khien dang tat");
 
-        treadmill_ctrl_toggle();          /* bat */
+        confirm_on();                     /* bat + xac nhan */
         treadmill_ctrl_speed_up();
         treadmill_ctrl_speed_down();
         CHECK_EQ(s_sent_n, 3, "sau khi bat phai gui du 3 lenh");
@@ -168,7 +204,7 @@ TEST_MAIN_BEGIN("treadmill_ctrl")
     TEST("May bao dung -> tu tat dieu khien phia smartkey");
     {
         reset_all(true);
-        treadmill_ctrl_toggle();
+        confirm_on();
         CHECK_EQ(s_lcd.control_enabled, 1, "dang bat");
 
         send_status(0, 0, 0, 0, 0, TREADMILL_ALERT_NONE);
@@ -183,7 +219,7 @@ TEST_MAIN_BEGIN("treadmill_ctrl")
     TEST("Lenh bi tu choi -> tu tat dieu khien");
     {
         reset_all(true);
-        treadmill_ctrl_toggle();
+        confirm_on();
         send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_CMD_REJECTED);
         CHECK_EQ(s_lcd.control_enabled, 0,
                  "CMD_REJECTED phai buoc tat dieu khien");
@@ -247,7 +283,7 @@ TEST_MAIN_BEGIN("treadmill_ctrl")
     TEST("Mat ket noi -> xoa het so lieu cu tren man hinh");
     {
         reset_all(true);
-        treadmill_ctrl_toggle();
+        confirm_on();
         send_status(1, 9, 9, 1, 3, TREADMILL_ALERT_DANGER);
         CHECK_EQ(s_lcd.speed, 9, "da co so lieu");
 
@@ -263,6 +299,87 @@ TEST_MAIN_BEGIN("treadmill_ctrl")
         CHECK_EQ(s_lcd.safety_limited, 0, "co gioi han cu con sot lai");
         CHECK_EQ(s_lcd.control_enabled, 0, "dieu khien phai tat");
         CHECK_EQ(treadmill_ctrl_is_running(), 0, "is_running phai la false");
+    }
+
+    /* ---------------------------------------------------------------- */
+    TEST("S1.2: ON qua timeout khong xac nhan thi khong bat, khong tu gui lai");
+    {
+        reset_all(true);
+        treadmill_ctrl_toggle();          /* gui ON, cho xac nhan */
+        CHECK_EQ(s_sent_n, 1, "phai gui ON");
+        CHECK_EQ(s_lcd.control_enabled, 0, "chua xac nhan thi chua bat");
+
+        advance_ms(2000);                 /* het cua so xac nhan */
+        CHECK_EQ(s_lcd.control_enabled, 0, "qua timeout van bat");
+        CHECK_EQ(s_sent_n, 1, "khong duoc tu gui lai ON");
+
+        treadmill_ctrl_toggle();          /* bam lai: la lan ON moi */
+        CHECK_EQ(s_sent_n, 2, "bam lai phai gui ON moi");
+        CHECK_EQ(s_sent[1], TREADMILL_CMD_ON, "lenh moi phai la ON");
+    }
+
+    /* ---------------------------------------------------------------- */
+    TEST("S1.2: status chay den muon sau timeout khong xac nhan nguoc");
+    {
+        reset_all(true);
+        treadmill_ctrl_toggle();
+        advance_ms(2500);
+        send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_NONE);
+        CHECK_EQ(s_lcd.control_enabled, 0, "status muon van bat dieu khien");
+    }
+
+    /* ---------------------------------------------------------------- */
+    TEST("S1.2: OFF huy ON dang cho xac nhan");
+    {
+        reset_all(true);
+        treadmill_ctrl_toggle();          /* ON dang cho */
+        treadmill_ctrl_toggle();          /* bam nua = OFF/huy */
+        CHECK_EQ(s_sent_n, 2, "phai gui OFF huy");
+        CHECK_EQ(s_sent[1], TREADMILL_CMD_OFF, "lenh huy phai la OFF");
+        send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_NONE);
+        CHECK_EQ(s_lcd.control_enabled, 0, "ON da huy thi status khong bat lai");
+    }
+
+    /* ---------------------------------------------------------------- */
+    TEST("S1.2: OFF ghi BLE loi thi thu lai 1 lan, that bai thi giu nguyen");
+    {
+        reset_all(true);
+        confirm_on();
+        s_write_rc = -5;
+        s_sent_n = 0;
+        treadmill_ctrl_toggle();          /* OFF loi 2 lan */
+        CHECK_EQ(s_lcd.control_enabled, 1, "OFF loi thi dieu khien van bat");
+        s_write_rc = 0;
+        treadmill_ctrl_toggle();
+        CHECK_EQ(s_sent_n, 1, "sau khi het loi phai gui duoc OFF");
+        CHECK_EQ(s_sent[0], TREADMILL_CMD_OFF, "lenh phai la OFF");
+        CHECK_EQ(s_lcd.control_enabled, 0, "OFF thanh cong thi tat");
+    }
+
+    /* ---------------------------------------------------------------- */
+    TEST("S1.2: mat status qua 2 s -> MAT TIN HIEU, khoa dieu khien, co status moi thi mo");
+    {
+        reset_all(true);
+        confirm_on();
+        CHECK_EQ(s_lcd.control_enabled, 1, "dang bat");
+
+        advance_ms(2000);                 /* vua dung 2000 ms: chua mat */
+        CHECK_EQ(s_lcd.signal_lost, 0, "chua qua nguong thi chua mat tin hieu");
+        advance_ms(10);                   /* qua nguong */
+        CHECK_EQ(s_lcd.signal_lost, 1, "phai hien MAT TIN HIEU");
+        CHECK_EQ(s_lcd.control_enabled, 0, "mat tin hieu thi khoa dieu khien");
+
+        s_sent_n = 0;
+        treadmill_ctrl_speed_up();
+        CHECK_EQ(s_sent_n, 0, "mat tin hieu van gui lenh toc do");
+        treadmill_ctrl_toggle();          /* dinh bat lai khi mat tin hieu */
+        CHECK_EQ(s_sent_n, 0, "mat tin hieu van gui ON");
+
+        send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_NONE);
+        CHECK_EQ(s_lcd.signal_lost, 0, "co status moi thi het MAT TIN HIEU");
+        treadmill_ctrl_toggle();
+        CHECK_EQ(s_sent_n, 1, "co tin hieu lai thi bat duoc");
+        CHECK_EQ(s_sent[0], TREADMILL_CMD_ON, "lenh phai la ON");
     }
 
 TEST_MAIN_END()

@@ -38,6 +38,7 @@ typedef struct {
     bool              safety_limited;  /* bàn chạy đang giới hạn vì an toàn */
     uint8_t           zone;            /* vùng an toàn báo về */
     treadmill_alert_t alert;           /* cảnh báo hiện tại */
+    bool              signal_lost;     /* S1.2: quá lâu không có status mới */
 } lcd_status_t;
 
 /** Khởi tạo panel và task vẽ. Trả về lỗi nếu không init được màn hình;

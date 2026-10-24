@@ -37,6 +37,10 @@ typedef struct __attribute__((packed)) {
 
 void treadmill_ctrl_init(void);
 void treadmill_ctrl_toggle(void);
+/* Periodic timeout evaluation (ON-confirm window, status staleness).
+ * Called every 100 ms by the ctrl tick task; tests call it directly
+ * after advancing the fake clock. */
+void treadmill_ctrl_tick(void);
 void treadmill_ctrl_speed_up(void);
 void treadmill_ctrl_speed_down(void);
 void treadmill_ctrl_handle_status(const uint8_t *data, uint16_t len);
