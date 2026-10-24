@@ -51,6 +51,22 @@ static bool s_signal_lost = false;
 /* S1.3 speed rate limit. */
 static uint32_t s_last_speed_ms = 0;
 static bool s_have_speed = false;
+/* S1.6: severe-alert hold. The LCD shows s_display_alert, which lags
+ * s_server_alert while a severe alert is inside its 3 s hold window:
+ * a warning that flashes for one status and vanishes before the runner
+ * can read it is worse than a warning that lingers 3 s. */
+#ifndef CONFIG_TREADMILL_CTRL_ALERT_HOLD_MS
+#define CONFIG_TREADMILL_CTRL_ALERT_HOLD_MS 3000
+#endif
+static uint8_t s_display_alert = TREADMILL_ALERT_NONE;
+static uint32_t s_alert_hold_until_ms = 0;
+
+static bool alert_is_severe(uint8_t alert)
+{
+    return alert == TREADMILL_ALERT_DANGER ||
+           alert == TREADMILL_ALERT_NO_PERSON ||
+           alert == TREADMILL_ALERT_SAFETY_KEY_OUT;
+}
 
 static uint32_t now_ms(void)
 {
@@ -67,7 +83,7 @@ static void push_to_lcd(void)
         .requested_speed = s_server_requested_speed,
         .safety_limited  = s_server_safety_limited != 0,
         .zone            = s_server_zone,
-        .alert           = (treadmill_alert_t)s_server_alert,
+        .alert           = (treadmill_alert_t)s_display_alert,
         .signal_lost     = s_signal_lost,
     };
     lcd_display_set_status(&st);
@@ -95,6 +111,12 @@ static void evaluate_timeouts(uint32_t now)
         s_on_pending = false;
         ESP_LOGW(TAG, "MAT TIN HIEU: no status for >%d ms, control locked",
                  CONFIG_TREADMILL_CTRL_STATUS_STALE_MS);
+        push_to_lcd();
+    }
+    // S1.6: when the hold window expires, the latest alert wins.
+    if (s_display_alert != s_server_alert &&
+        now >= s_alert_hold_until_ms) {
+        s_display_alert = s_server_alert;
         push_to_lcd();
     }
 }
@@ -138,6 +160,8 @@ void treadmill_ctrl_init(void)
     s_server_zone = 0;
     s_server_safety_limited = 0;
     s_server_alert = TREADMILL_ALERT_NONE;
+    s_display_alert = TREADMILL_ALERT_NONE;
+    s_alert_hold_until_ms = 0;
     s_on_pending = false;
     s_have_status = false;
     s_signal_lost = false;
@@ -355,6 +379,19 @@ void treadmill_ctrl_handle_status(const uint8_t *data, uint16_t len)
     s_server_safety_limited = msg->safety_limited;
     s_server_zone = msg->zone;
     s_server_alert = msg->alert;
+
+    // S1.6 display hold: a severe alert takes the screen immediately
+    // and keeps it for 3 s; a newer severe alert refreshes the window;
+    // anything else waits out the window instead of flashing past.
+    if (alert_is_severe(s_server_alert)) {
+        s_display_alert = s_server_alert;
+        s_alert_hold_until_ms = now + CONFIG_TREADMILL_CTRL_ALERT_HOLD_MS;
+    } else if (now < s_alert_hold_until_ms &&
+               alert_is_severe(s_display_alert)) {
+        // Hold: display keeps the severe alert, latest waits.
+    } else {
+        s_display_alert = s_server_alert;
+    }
 
     if (!s_server_running) {
         s_enabled = false;

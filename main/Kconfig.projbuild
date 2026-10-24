@@ -98,6 +98,16 @@ menu "Smartkey Control"
             the gate if RSSI cannot tell them apart. A failed RSSI
             read fails open with a warning log.
 
+    config TREADMILL_CTRL_ALERT_HOLD_MS
+        int "Severe alert minimum on-screen time (ms)"
+        default 3000
+        range 0 10000
+        help
+            Phase 1, S1.6: once DANGER, NO_PERSON or SAFETY_KEY_OUT
+            is shown, it stays at least this long even if the next
+            status reports something else, so the runner can read it.
+            After the window, the latest alert wins.
+
 endmenu
 
 menu "Smartkey TFT Display"

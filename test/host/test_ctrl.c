@@ -453,6 +453,48 @@ TEST_MAIN_BEGIN("treadmill_ctrl")
     }
 
     /* ---------------------------------------------------------------- */
+    TEST("S1.6: alert nghiem trong giu toi thieu 3 s tren man hinh");
+    {
+        reset_all(true);
+        send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_DANGER);
+        CHECK_EQ(s_lcd.alert, TREADMILL_ALERT_DANGER, "DANGER phai hien ngay");
+
+        advance_ms(1000);
+        send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_NONE);
+        CHECK_EQ(s_lcd.alert, TREADMILL_ALERT_DANGER, "1 s sau van phai giu DANGER");
+
+        advance_ms(1999);
+        CHECK_EQ(s_lcd.alert, TREADMILL_ALERT_DANGER, "2999 ms van giu");
+        advance_ms(1);
+        CHECK_EQ(s_lcd.alert, TREADMILL_ALERT_NONE, "du 3 s thi alert moi thang");
+    }
+
+    /* ---------------------------------------------------------------- */
+    TEST("S1.6: alert nghiem trong moi lam moi cua so giu, alert thuong thi khong");
+    {
+        reset_all(true);
+        send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_DANGER);
+        advance_ms(2000);
+        send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_NO_PERSON);
+        CHECK_EQ(s_lcd.alert, TREADMILL_ALERT_NO_PERSON, "alert moi phai hien ngay");
+        advance_ms(2000);
+        send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_WARNING_1);
+        CHECK_EQ(s_lcd.alert, TREADMILL_ALERT_NO_PERSON, "WARNING khong duoc chen ngang");
+        advance_ms(1000);
+        CHECK_EQ(s_lcd.alert, TREADMILL_ALERT_WARNING_1, "het cua so moi thi WARNING thang");
+    }
+
+    /* ---------------------------------------------------------------- */
+    TEST("S1.6: CMD_REJECTED khong thuoc nhom giu");
+    {
+        reset_all(true);
+        send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_CMD_REJECTED);
+        CHECK_EQ(s_lcd.alert, TREADMILL_ALERT_CMD_REJECTED, "CMD_REJECTED hien ngay");
+        send_status(1, 3, 3, 0, 1, TREADMILL_ALERT_NONE);
+        CHECK_EQ(s_lcd.alert, TREADMILL_ALERT_NONE, "CMD_REJECTED khong bi giu");
+    }
+
+    /* ---------------------------------------------------------------- */
     TEST("S1.3: OFF khong bi gioi han toc do bam");
     {
         reset_all(true);
