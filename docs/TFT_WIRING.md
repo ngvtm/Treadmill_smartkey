@@ -1,10 +1,13 @@
 # Đấu nối TFT 2,4" cho smartkey (GĐ3.1) — thay e-paper
 
+**Sơ đồ chân cắm trực quan (in được): xem [TFT_PINOUT.html](TFT_PINOUT.html)** — module bên trái,
+ESP32 bên phải, đường nối theo từng chân; đi theo tên chân in trên module, không theo vị trí trong hình.
+
 Giữ nguyên vị trí dây của e-paper cũ; chỉ đổi vai trò chân GPIO4 và tháo bo DESPI-C02/e-paper ra.
 
 | Chân module TFT | Nối vào | Ghi chú |
 |---|---|---|
-| VCC | 3V3 | Module 2,4" SPI chạy 3,3 V (bản có ổn áp kèm theo vẫn cấp 3,3 V cho an toàn logic) |
+| VCC | 3V3 (hoặc 5V nếu module có ổn áp) | Nhìn board module trước: có con AMS1117-3.3 thì cấp 5 V vào VCC (lấy từ chân 5V/VIN của board ESP32); không có ổn áp thì cấp 3,3 V. Cấp 3,3 V vào module có ổn áp sẽ chỉ còn ~2,2 V sau ổn áp, màn không lên. Chân logic luôn 3,3 V từ ESP32. (Sửa lại dòng cũ "bản có ổn áp vẫn cấp 3,3 V" — dòng đó sai với module có ổn áp.) |
 | GND | GND | |
 | CS | GPIO27 | như cũ |
 | RESET | GPIO25 | như cũ |
