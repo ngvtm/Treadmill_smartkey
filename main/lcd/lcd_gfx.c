@@ -55,7 +55,17 @@ static const uint16_t s_palette[4] = {
 #define FB_STRIDE  (LCD_W / 4)          /* 2 bpp: 4 pixel/byte */
 #define FB_SIZE    (FB_STRIDE * LCD_H)
 #define BAND_ROWS  16
-#define BAND_BYTES (LCD_W * BAND_ROWS * 2)
+/* Kinh tren module nay gan lech 90 do so voi chieu quet mac dinh:
+ * framebuffer portrait 240x320 chi phu 240/320 pixel chieu dai cua
+ * kinh -> 80 pixel (1/4 man) khong duoc ghi nen nhieu hat, phan con
+ * lai bi cat. Sua bang cach xoay dau ra 90 do ngay luc flush: anh
+ * landscape 320x240 + MADCTL MV. App, layout va touch giu nguyen
+ * portrait; phep quay nam hoan toan o flush. Hieu chuan touch 3 diem
+ * (affine) tu hap thu phep quay nen khong can sua touch.
+ * NEU ANH XOAY NGUOC DAU (chu dung nhung lon nguoc): doi cap
+ * MADCTL o bang init (ILI9341 0x28 <-> 0xE8, ST7789 0x20 <-> 0xE0)
+ * VA doi anh xa transpose o flush (xem comment o do). */
+#define BAND_BYTES (PANEL_W * BAND_ROWS * 2)
 
 static esp_lcd_panel_io_handle_t s_io;
 static uint8_t                  *s_fb;        /* palette 2 bpp */
@@ -166,7 +176,7 @@ typedef struct {
 static const init_step_t s_init_seq[] = {
     STEP0(CMD_SWRESET, 150),
     STEP0(CMD_SLPOUT, 120),
-    STEP(CMD_MADCTL, 0x00),                 /* doc, RGB */
+    STEP(CMD_MADCTL, 0x20),                 /* MV, RGB: landscape (xoay 90) */
     STEP(CMD_COLMOD, 0x55),                 /* RGB565 */
     STEP(0xB2, 0x0C, 0x0C, 0x00, 0x33, 0x33), /* porch */
     STEP(0xB7, 0x35),                       /* gate control */
@@ -197,7 +207,7 @@ static const init_step_t s_init_seq[] = {
     STEP(0xC1, 0x10),                       /* PWCTRL2 */
     STEP(0xC5, 0x3E, 0x28),                 /* VMCTRL1 */
     STEP(0xC7, 0x86),                       /* VMCTRL2 */
-    STEP(CMD_MADCTL, 0x48),                 /* MX + BGR (module pho bien) */
+    STEP(CMD_MADCTL, 0x28),                 /* MV + BGR: landscape (xoay 90) */
     STEP(CMD_COLMOD, 0x55),                 /* RGB565 */
     STEP(0xB1, 0x00, 0x18),                 /* frame rate 79 Hz */
     STEP(0xB6, 0x08, 0x82, 0x27),           /* display function */
@@ -259,25 +269,33 @@ void lcd_gfx_flush(void)
         panel_init();       /* sleep xoa trang thai hien thi, init lai */
     }
 
-    for (int y0 = 0; y0 < LCD_H; y0 += BAND_ROWS) {
-        const int rows = (LCD_H - y0 < BAND_ROWS) ? (LCD_H - y0) : BAND_ROWS;
+    /* Flush xoay 90 do: pixel panel (px, py) lay tu pixel framebuffer
+     * (x = py, y = LCD_H - 1 - px). Day la phep quay CW cua anh portrait
+     * thanh anh landscape 320x240. De dao huong quay (neu anh bi nguoc
+     * dau), doi anh xa thanh (x = LCD_W - 1 - py, y = px) va doi MADCTL
+     * o bang init (ILI9341 0x28 -> 0xE8, ST7789 0x20 -> 0xE0). */
+    for (int py0 = 0; py0 < PANEL_H; py0 += BAND_ROWS) {
+        const int rows = (PANEL_H - py0 < BAND_ROWS) ? (PANEL_H - py0) : BAND_ROWS;
 
         /* No palette 2 bpp -> RGB565 big-endian cho dai nay. */
         for (int r = 0; r < rows; r++) {
-            const uint8_t *src = &s_fb[(y0 + r) * FB_STRIDE];
-            uint8_t       *dst = &s_band[r * LCD_W * 2];
-            for (int x = 0; x < LCD_W; x++) {
-                const uint8_t packed = src[x >> 2];
-                const int     idx    = (packed >> (6 - 2 * (x & 3))) & 3;
+            const int py = py0 + r;
+            uint8_t  *dst = &s_band[r * PANEL_W * 2];
+            for (int px = 0; px < PANEL_W; px++) {
+                const int fb_x = py;
+                const int fb_y = LCD_H - 1 - px;
+                const uint8_t *src = &s_fb[fb_y * FB_STRIDE];
+                const uint8_t packed = src[fb_x >> 2];
+                const int     idx    = (packed >> (6 - 2 * (fb_x & 3))) & 3;
                 const uint16_t rgb  = s_palette[idx];
-                dst[2 * x]     = (uint8_t)(rgb >> 8);
-                dst[2 * x + 1] = (uint8_t)(rgb & 0xFF);
+                dst[2 * px]     = (uint8_t)(rgb >> 8);
+                dst[2 * px + 1] = (uint8_t)(rgb & 0xFF);
             }
         }
 
-        set_window(0, y0, LCD_W - 1, y0 + rows - 1);
+        set_window(0, py0, PANEL_W - 1, py0 + rows - 1);
         ESP_ERROR_CHECK(esp_lcd_panel_io_tx_color(
-            s_io, CMD_RAMWR, s_band, (size_t)LCD_W * rows * 2));
+            s_io, CMD_RAMWR, s_band, (size_t)PANEL_W * rows * 2));
     }
 
     xSemaphoreGive(s_lock);

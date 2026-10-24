@@ -72,9 +72,12 @@ extern "C" {
 #define TFT_PANEL_H 320
 #endif
 
-/* Khung logic = khung panel (dọc, không xoay ở bản này). */
+/* Khung logic app ve (portrait). Kinh tren module gan lech 90 do nen
+ * cua so panel that la landscape: xem ghi chu xoay o lcd_gfx.c. */
 #define LCD_W TFT_PANEL_W
 #define LCD_H TFT_PANEL_H
+#define PANEL_W TFT_PANEL_H
+#define PANEL_H TFT_PANEL_W
 
 /* Palette 2 bpp. Giá trị RGB565 tương ứng nằm trong lcd_gfx.c. */
 #define LCD_PAPER 0   /* trắng */
