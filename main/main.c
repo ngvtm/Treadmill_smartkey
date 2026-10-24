@@ -514,7 +514,18 @@ app_main(void)
             .idle_core_mask = 0,
             .trigger_panic = true,
         };
-        ESP_ERROR_CHECK(esp_task_wdt_init(&wdt_cfg));
+        /* IDF 5.x khoi dong TWDT san o startup (app_startup.c,
+         * CONFIG_ESP_TASK_WDT_INIT=y mac dinh) nen init o day bi tu
+         * choi voi ESP_ERR_INVALID_STATE. Truong hop do khong phai
+         * loi: ap cau hinh cua app (timeout + panic) len watchdog
+         * dang chay thay vi abort. */
+        esp_err_t wdt_err = esp_task_wdt_init(&wdt_cfg);
+        if (wdt_err == ESP_ERR_INVALID_STATE) {
+            ESP_LOGW(tag, "TWDT already initialized at startup, reconfiguring");
+            ESP_ERROR_CHECK(esp_task_wdt_reconfigure(&wdt_cfg));
+        } else {
+            ESP_ERROR_CHECK(wdt_err);
+        }
     }
 #else
     ESP_ERROR_CHECK(esp_task_wdt_init(CONFIG_TREADMILL_SMARTKEY_WDT_TIMEOUT_S, true));
