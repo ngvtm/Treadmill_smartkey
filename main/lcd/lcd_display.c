@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -266,7 +267,13 @@ static void lcd_task(void *arg)
     int64_t last_refresh = -MIN_GAP_MS;
     bool    pending      = true;      /* vẽ khung đầu ngay khi khởi động */
 
+    // Phase 1, S1.5: watchdog-supervised (see app_main). A hung render
+    // task must not wedge the key: the reset lets the user press OFF
+    // again on a fresh boot instead of staring at a frozen screen.
+    esp_task_wdt_add(NULL);
+
     while (1) {
+        esp_task_wdt_reset();
         lcd_status_t     st;
         lcd_link_state_t link;
 

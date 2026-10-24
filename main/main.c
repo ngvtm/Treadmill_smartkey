@@ -1,4 +1,6 @@
 #include "esp_log.h"
+#include "esp_task_wdt.h"
+#include "esp_idf_version.h"
 #include "nvs_flash.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
@@ -432,6 +434,29 @@ app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
+    // Phase 1, S1.5: task watchdog for the LCD, button and ctrl tick
+    // tasks (2 s: all three loop in <= 1 s even when idle). A hung
+    // render or button task resets the key instead of freezing it
+    // with OFF unreachable. Same boundary as the server: this does
+    // not replace the server-side hardware interlock.
+#ifndef CONFIG_TREADMILL_SMARTKEY_WDT_TIMEOUT_S
+#define CONFIG_TREADMILL_SMARTKEY_WDT_TIMEOUT_S 2
+#endif
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+    {
+        esp_task_wdt_config_t wdt_cfg = {
+            .timeout_ms = CONFIG_TREADMILL_SMARTKEY_WDT_TIMEOUT_S * 1000,
+            .idle_core_mask = 0,
+            .trigger_panic = true,
+        };
+        ESP_ERROR_CHECK(esp_task_wdt_init(&wdt_cfg));
+    }
+#else
+    ESP_ERROR_CHECK(esp_task_wdt_init(CONFIG_TREADMILL_SMARTKEY_WDT_TIMEOUT_S, true));
+#endif
+    ESP_LOGI(tag, "task watchdog armed: %d s (lcd, button, ctrl_tick)",
+             CONFIG_TREADMILL_SMARTKEY_WDT_TIMEOUT_S);
 
     /* Bật màn hình trước BLE để có phản hồi ngay khi cấp nguồn.
      * Lỗi màn hình không được chặn phần điều khiển: smartkey vẫn phải

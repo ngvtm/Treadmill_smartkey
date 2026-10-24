@@ -2,6 +2,7 @@
 #include "ble_client/ble_client.h"
 #include "lcd/lcd_display.h"
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -129,7 +130,10 @@ void treadmill_ctrl_tick(void)
 static void ctrl_tick_task(void *arg)
 {
     (void)arg;
+    // Phase 1, S1.5: watchdog-supervised, like the LCD and button tasks.
+    esp_task_wdt_add(NULL);
     while (1) {
+        esp_task_wdt_reset();
         vTaskDelay(pdMS_TO_TICKS(CTRL_TICK_MS));
         treadmill_ctrl_tick();
     }
