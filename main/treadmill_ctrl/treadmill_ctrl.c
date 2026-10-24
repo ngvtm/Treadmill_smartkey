@@ -19,6 +19,14 @@
 #ifndef CONFIG_TREADMILL_CTRL_SPEED_RATE_LIMIT_MS
 #define CONFIG_TREADMILL_CTRL_SPEED_RATE_LIMIT_MS 300
 #endif
+/* Phase 1, S1.4: RSSI start gate (dBm). ON is refused when the link is
+ * weaker than this. Default -75 is deliberately loose to avoid false
+ * refusals; the final value must be calibrated on real hardware
+ * (RSSI beside the belt vs. RSSI from the next room) and the gate
+ * dropped entirely if calibration shows RSSI cannot tell them apart. */
+#ifndef CONFIG_TREADMILL_CTRL_RSSI_MIN_DBM
+#define CONFIG_TREADMILL_CTRL_RSSI_MIN_DBM (-75)
+#endif
 
 #define CTRL_TICK_MS 100
 
@@ -206,7 +214,10 @@ void treadmill_ctrl_request_on(void)
     uint32_t now = now_ms();
     evaluate_timeouts(now);
 
-    // ON path: S1.1 gate + S1.2 staleness gate, then pending-confirm.
+    // ON path: S1.1 gate + S1.2 staleness gate + S1.4 RSSI gate, then
+    // pending-confirm. The RSSI gate applies ONLY to ON: never to OFF,
+    // never to reconnect, and never re-checked mid-run (posture changes
+    // would drop a running session on a fading signal).
     if (s_signal_lost) {
         ESP_LOGW(TAG, "Refuse ON: signal lost (no fresh status)");
         return;
@@ -215,6 +226,21 @@ void treadmill_ctrl_request_on(void)
         ESP_LOGW(TAG, "Refuse ON: latest alert=%s (safety key out)",
                  alert_to_str(s_server_alert));
         return;
+    }
+    int8_t rssi = 0;
+    int rssi_rc = ble_client_get_rssi(&rssi);
+    if (rssi_rc == 0 && rssi < CONFIG_TREADMILL_CTRL_RSSI_MIN_DBM) {
+        // No message line on the LCD to print "KEY QUA XA" on (same
+        // limitation as the S1.2 unconfirmed-ON case); the refusal is
+        // visible as control staying OFF, and logged here.
+        ESP_LOGW(TAG, "Refuse ON: KEY QUA XA (rssi=%d dBm < %d dBm)",
+                 (int)rssi, CONFIG_TREADMILL_CTRL_RSSI_MIN_DBM);
+        return;
+    }
+    if (rssi_rc != 0) {
+        // Fail open, loudly: a broken RSSI read must not brick ON
+        // forever. The gate is provisional until calibrated anyway.
+        ESP_LOGW(TAG, "RSSI unreadable, ON gate skipped (fail open)");
     }
 
     int rc = ble_client_write_command(TREADMILL_CMD_ON);

@@ -1,6 +1,7 @@
 #include "ble_client.h"
 #include "lcd/lcd_display.h"
 #include "host/ble_gatt.h"
+#include "host/ble_gap.h"
 #include "modlog/modlog.h"
 
 static uint16_t s_conn_handle    = BLE_HS_CONN_HANDLE_NONE;
@@ -34,6 +35,14 @@ bool ble_client_is_ready(void)
 {
     return (s_conn_handle != BLE_HS_CONN_HANDLE_NONE)
         && (s_chr_val_handle != 0);
+}
+
+int ble_client_get_rssi(int8_t *out_rssi)
+{
+    if (out_rssi == NULL || !ble_client_is_ready()) {
+        return -1;
+    }
+    return ble_gap_conn_rssi(s_conn_handle, out_rssi);
 }
 
 int ble_client_write_command(uint8_t cmd)

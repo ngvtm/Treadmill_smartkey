@@ -28,6 +28,11 @@ bool ble_client_is_ready(void);
 /** Ghi 1 byte command tới characteristic của Peripheral */
 int  ble_client_write_command(uint8_t cmd);
 
+/** Phase 1, S1.4: đọc RSSI (dBm) của kết nối hiện tại qua NimBLE.
+ * Trả về 0 và ghi *out_rssi khi đọc được, khác 0 khi chưa kết nối
+ * hoặc NimBLE báo lỗi. */
+int  ble_client_get_rssi(int8_t *out_rssi);
+
 #ifdef __cplusplus
 }
 #endif
