@@ -12,8 +12,12 @@ table { border-collapse: collapse; } td, th { border: 1px solid #bbb; padding: 5
 <h1>Sơ đồ chân cắm TFT 2,4" SPI + touch XPT2046 — smartkey</h1>
 <p><b>Quy tắc đọc sơ đồ:</b> đi theo <b>TÊN chân in trên module</b>, không theo vị trí trong hình —
 thứ tự chân thực tế tùy hãng module (một số module in T_DIN là "T_SDA", T_DO là "T_SDO",
-SDI là "SDA"). <b>5 chân touch (T_CLK, T_DIN, T_CS, T_DO, T_IRQ) là BẮT BUỘC từ Phase 1 touch controls — cảm ứng giờ là điều khiển chính (khởi động, dừng, tăng/giảm tốc qua thanh GIAM / BAT-TAT / TANG ở đáy màn chính); không nối 5 chân này thì chỉ còn bật nguồn + dừng khẩn cấp, không khởi động hay đổi tốc được.</b> <b>Chú ý mạch 30 chân:</b> GPIO39 không in số 39 mà in là <b>VN</b> (hàng trên, giữa D34 và VP, gần nút EN) — nối T_IRQ vào chân VN đó; GPIO36 in là VP. Mọi chân trong hình đã đối chiếu với code (lcd_gfx.h, touch_xpt2046.c, Kconfig):
-CS 27, RESET 25, DC 26, MOSI 33, SCK 32, BL 4, T_DO 19, T_CS 14, T_IRQ 39.</p>
+SDI là "SDA"). <b>5 chân touch (T_CLK, T_DIN, T_CS, T_DO, T_IRQ) là BẮT BUỘC từ Phase 1 touch controls — cảm ứng giờ là điều khiển chính (khởi động, dừng, tăng/giảm tốc qua thanh GIAM / BAT-TAT / TANG ở đáy màn chính); không nối 5 chân này thì chỉ còn bật nguồn + dừng khẩn cấp, không khởi động hay đổi tốc được.</b> <b>Chân xếp đúng thứ tự trên mạch 30 chân, không chéo nhau:</b> CS→D27, RESET→D26, DC→D25,
+SDI→D33, SCK→D32 đi một hàng theo đúng thứ tự chân trên board; touch dùng chung SCK/MOSI, chỉ
+thêm T_CS→D13, T_DO→D19, T_IRQ→D14. T_IRQ (GPIO14) có pull-up nội nên <b>không cần gắn thêm trở
+nào</b>; chân VN (GPIO39) để trống. Mọi chân trong hình đã đối chiếu với code (lcd_gfx.h,
+touch_xpt2046.c, Kconfig):
+CS 27, RESET 26, DC 25, MOSI 33, SCK 32, BL 4, T_DO 19, T_CS 13, T_IRQ 14.</p>
 <svg viewBox="0 0 780 566" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">
 <rect x="20" y="20" width="200" height="526" fill="#f6f1e7" stroke="#999"/>
 <rect x="560" y="20" width="200" height="526" fill="#e8f0f8" stroke="#999"/>
@@ -33,11 +37,11 @@ CS 27, RESET 25, DC 26, MOSI 33, SCK 32, BL 4, T_DO 19, T_CS 14, T_IRQ 39.</p>
 <text x="392" y="154" text-anchor="middle" font-size="10" fill="#555">Chip-select màn hình</text>
 <text x="30" y="174" font-size="13" font-weight="bold" fill="#1a5fb4">RESET</text>
 <line x1="220" y1="170" x2="560" y2="170" stroke="#1a5fb4" stroke-width="2"/>
-<text x="570" y="174" font-size="13" font-weight="bold" fill="#1a5fb4">GPIO25</text>
+<text x="570" y="174" font-size="13" font-weight="bold" fill="#1a5fb4">GPIO26</text>
 <text x="392" y="188" text-anchor="middle" font-size="10" fill="#555">Reset màn hình</text>
 <text x="30" y="208" font-size="13" font-weight="bold" fill="#1a5fb4">DC / RS</text>
 <line x1="220" y1="204" x2="560" y2="204" stroke="#1a5fb4" stroke-width="2"/>
-<text x="570" y="208" font-size="13" font-weight="bold" fill="#1a5fb4">GPIO26</text>
+<text x="570" y="208" font-size="13" font-weight="bold" fill="#1a5fb4">GPIO25</text>
 <text x="392" y="222" text-anchor="middle" font-size="10" fill="#555">Data / Command</text>
 <text x="30" y="242" font-size="13" font-weight="bold" fill="#1a5fb4">SDI / MOSI (SDA)</text>
 <line x1="220" y1="238" x2="560" y2="238" stroke="#1a5fb4" stroke-width="2"/>
@@ -65,7 +69,7 @@ CS 27, RESET 25, DC 26, MOSI 33, SCK 32, BL 4, T_DO 19, T_CS 14, T_IRQ 39.</p>
 <text x="392" y="426" text-anchor="middle" font-size="10" fill="#555">Dữ liệu vào touch, chung chân MOSI</text>
 <text x="30" y="446" font-size="13" font-weight="bold" fill="#2a7d2a">T_CS</text>
 <line x1="220" y1="442" x2="560" y2="442" stroke="#2a7d2a" stroke-width="2"/>
-<text x="570" y="446" font-size="13" font-weight="bold" fill="#2a7d2a">GPIO14</text>
+<text x="570" y="446" font-size="13" font-weight="bold" fill="#2a7d2a">GPIO13</text>
 <text x="392" y="460" text-anchor="middle" font-size="10" fill="#555">Chip-select touch riêng</text>
 <text x="30" y="480" font-size="13" font-weight="bold" fill="#2a7d2a">T_DO (T_SDO)</text>
 <line x1="220" y1="476" x2="560" y2="476" stroke="#2a7d2a" stroke-width="2"/>
@@ -73,14 +77,14 @@ CS 27, RESET 25, DC 26, MOSI 33, SCK 32, BL 4, T_DO 19, T_CS 14, T_IRQ 39.</p>
 <text x="392" y="494" text-anchor="middle" font-size="10" fill="#555">Dữ liệu ra touch (MISO riêng)</text>
 <text x="30" y="514" font-size="13" font-weight="bold" fill="#2a7d2a">T_IRQ</text>
 <line x1="220" y1="510" x2="560" y2="510" stroke="#2a7d2a" stroke-width="2"/>
-<text x="570" y="514" font-size="13" font-weight="bold" fill="#2a7d2a">GPIO39</text>
+<text x="570" y="514" font-size="13" font-weight="bold" fill="#2a7d2a">GPIO14</text>
 <text x="392" y="528" text-anchor="middle" font-size="10" fill="#555">Chỉ-vào, mức thấp = đang chạm (poll 20 ms)</text>
 </svg>
 <h2>1. Chân dùng chung — touch chia sẻ bus SPI với màn hình</h2>
 <p>T_CLK nối chung chân SCK (GPIO32), T_DIN nối chung chân MOSI (GPIO33). Đây không phải đấu nhầm:
 touch là một device SPI riêng trên cùng bus (clock 2 MHz), màn hình chạy 40 MHz; 2 chip-select
-riêng (CS màn hình GPIO27, T_CS GPIO14) quyết định lúc nào device nào được nói. Chỉ thêm đúng 3 chân
-mới so với màn hình: T_DO (GPIO19), T_CS (GPIO14), T_IRQ (GPIO39).</p>
+riêng (CS màn hình GPIO27, T_CS GPIO13) quyết định lúc nào device nào được nói. Chỉ thêm đúng 3 chân
+mới so với màn hình: T_DO (GPIO19), T_CS (GPIO13), T_IRQ (GPIO14).</p>
 <h2>2. Nguồn VCC — kiểm tra trước khi cắm (quan trọng)</h2>
 <div class="warn"><p><b>Nhìn board module trước:</b> nếu trên board có con ổn áp ghi <b>AMS1117-3.3</b> thì chân
 VCC phải cấp <b>5 V</b> (lấy từ chân 5V/VIN của board ESP32) — cấp 3,3 V vào module có ổn áp sẽ chỉ còn
@@ -91,11 +95,9 @@ màn trắng tinh hoặc không lên dù đã đúng driver IC.</p></div>
 <ul>
 <li><b>SDO / MISO của màn hình không nối</b> — firmware chỉ ghi, không đọc panel.</li>
 <li><b>T_IRQ chỉ là mức báo chạm</b> — firmware poll mỗi 20 ms, không dùng ngắt; chân này chỉ-vào.
-<b>Quan trọng:</b> GPIO39 là chân chỉ-vào, KHÔNG có pull-up nội — code có xin pull-up nhưng trên
-chân này không có tác dụng. Nếu module chưa tự kéo T_IRQ lên thì gắn thêm trở 10k từ T_IRQ lên
-3.3V (gắn song song cũng không sao nếu module đã có trở); không thì dây lơ lửng có thể gây chạm
-ảo. Cách khác không cần thêm linh kiện: chuyển chân IRQ sang GPIO13 trong menuconfig (chân này
-có pull-up thật) rồi build lại.</li>
+T_IRQ hiện ở GPIO14, chân này <b>có pull-up nội</b> nên code tự kéo lên được, <b>không cần gắn
+thêm trở nào</b>. (Trước đây T_IRQ ở GPIO39/VN là chân chỉ-vào không có pull-up nội nên mới cần
+trở ngoài — đã chuyển sang GPIO14 để khỏi gắn thêm linh kiện.)</li>
 <li><b>Đừng lẫn với nút bấm:</b> GPIO21 = nguồn, GPIO22 = dừng khẩn cấp, GPIO23 để trống (không liên quan tới TFT; code vẫn nhận GPIO23 là dừng khẩn cấp nếu sau này anh nối thêm).</li>
 <li><b>Driver IC:</b> menuconfig mặc định ILI9341; màn trắng/đen bất thường hoặc màu sai hẳn thì đổi
 sang ST7789, không sửa code. Dây dài/nhiễu thì hạ SPI màn hình từ 40 MHz xuống 20 MHz trong cùng menu.</li>
@@ -111,9 +113,9 @@ sau đó menu 4 hàng. Chi tiết trong <b>TFT_WIRING.md</b> (bảng dây + chec
 <table><tr><th>Chân module</th><th>Nối vào</th><th>Chân module</th><th>Nối vào</th></tr>
 <tr><td>VCC</td><td>3V3 (hoặc 5V nếu module có AMS1117)</td><td>T_CLK</td><td>GPIO32 (chung SCK)</td></tr>
 <tr><td>GND</td><td>GND</td><td>T_DIN</td><td>GPIO33 (chung MOSI)</td></tr>
-<tr><td>CS</td><td>GPIO27</td><td>T_CS</td><td>GPIO14</td></tr>
-<tr><td>RESET</td><td>GPIO25</td><td>T_DO</td><td>GPIO19</td></tr>
-<tr><td>DC / RS</td><td>GPIO26</td><td>T_IRQ</td><td>GPIO39</td></tr>
+<tr><td>CS</td><td>GPIO27</td><td>T_CS</td><td>GPIO13</td></tr>
+<tr><td>RESET</td><td>GPIO26</td><td>T_DO</td><td>GPIO19</td></tr>
+<tr><td>DC / RS</td><td>GPIO25</td><td>T_IRQ</td><td>GPIO14</td></tr>
 <tr><td>SDI / MOSI</td><td>GPIO33</td><td>SDO / MISO</td><td>không nối</td></tr>
 <tr><td>SCK</td><td>GPIO32</td><td>LED / BL</td><td>GPIO4</td></tr>
 </table>

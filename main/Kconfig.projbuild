@@ -112,7 +112,7 @@ menu "Smartkey Touch"
 
     config TREADMILL_TOUCH_CS_GPIO
         int "XPT2046 chip-select GPIO"
-        default 14
+        default 13
         range 0 39
         help
             Touch chip-select. GPIO14: non-strapping, free on the
@@ -121,7 +121,7 @@ menu "Smartkey Touch"
 
     config TREADMILL_TOUCH_IRQ_GPIO
         int "XPT2046 PENIRQ GPIO (low = touched)"
-        default 39
+        default 14
         range 0 39
         help
             Input-only GPIO39 is fine here: it only ever reads the

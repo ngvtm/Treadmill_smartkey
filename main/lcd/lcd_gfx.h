@@ -39,10 +39,10 @@ extern "C" {
 #define TFT_PIN_BL   4
 #endif
 #ifndef TFT_PIN_RST
-#define TFT_PIN_RST  25
+#define TFT_PIN_RST  26
 #endif
 #ifndef TFT_PIN_DC
-#define TFT_PIN_DC   26
+#define TFT_PIN_DC   25
 #endif
 #ifndef TFT_PIN_CS
 #define TFT_PIN_CS   27

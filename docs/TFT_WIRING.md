@@ -10,8 +10,8 @@ Giữ nguyên vị trí dây của e-paper cũ; chỉ đổi vai trò chân GPIO
 | VCC | 3V3 (hoặc 5V nếu module có ổn áp) | Nhìn board module trước: có con AMS1117-3.3 thì cấp 5 V vào VCC (lấy từ chân 5V/VIN của board ESP32); không có ổn áp thì cấp 3,3 V. Cấp 3,3 V vào module có ổn áp sẽ chỉ còn ~2,2 V sau ổn áp, màn không lên. Chân logic luôn 3,3 V từ ESP32. (Sửa lại dòng cũ "bản có ổn áp vẫn cấp 3,3 V" — dòng đó sai với module có ổn áp.) |
 | GND | GND | |
 | CS | GPIO27 | như cũ |
-| RESET | GPIO25 | như cũ |
-| DC / RS | GPIO26 | như cũ |
+| RESET | GPIO26 | đổi với DC để dây đi đúng thứ tự chân trên board (27/26/25), không chéo |
+| DC / RS | GPIO25 | đổi với RESET, xem trên |
 | SDI / MOSI (có thể in "SDA") | GPIO33 | như cũ |
 | SCK | GPIO32 | như cũ |
 | LED / BL | GPIO4 | chân BUSY cũ của e-paper — nay là đèn nền, firmware bật sau khi init xong |
@@ -27,8 +27,8 @@ Touch chia sẻ bus SPI với màn hình; chỉ thêm 3 chân:
 | T_CLK | GPIO32 (chung SCK màn hình) | |
 | T_DIN | GPIO33 (chung MOSI màn hình) | |
 | T_DO | GPIO19 | MISO riêng; bus SPI của màn hình đã khai báo chân này (menuconfig "Smartkey Touch") |
-| T_CS | GPIO14 | chip-select riêng, không phải strapping |
-| T_IRQ | GPIO39 (= chân **VN** trên mạch 30 chân) | chỉ-vào, mức thấp = đang chạm; firmware poll 20 ms, không dùng ngắt; **chân này không có pull-up nội** → thêm trở 10k lên 3.3V nếu module chưa có (gắn song song cũng không sao) |
+| T_CS | GPIO13 | chip-select riêng, không phải strapping |
+| T_IRQ | GPIO14 | chỉ-vào, mức thấp = đang chạm; firmware poll 20 ms, không dùng ngắt; chân này **có pull-up nội nên không cần trở ngoài** (trước đây ở GPIO39/VN là chân không có pull-up nội nên mới cần trở — đã chuyển sang GPIO14 để khỏi gắn thêm linh kiện) |
 | VCC / GND | 3.3 V / GND | **không** đưa 5 V vào chân touch |
 
 Clock touch 2 MHz (device SPI riêng trên cùng bus, không dùng cấu
