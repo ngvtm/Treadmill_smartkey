@@ -15,20 +15,18 @@
 #define LCD_TASK_PRIO  4
 
 /*
- * E-paper refresh tốn 1-3 giây và làm màn chớp đen-trắng, nên không thể
- * vẽ lại mỗi khi có bản tin status. Thay vào đó gộp: đợi im lặng
- * SETTLE_MS rồi mới refresh một lần, và ép cách nhau tối thiểu MIN_GAP_MS.
- *
- * Đánh đổi: số tốc độ trễ khoảng một giây sau khi bấm nút. Đó là giới hạn
- * vật lý của e-paper, không phải chỗ tối ưu được bằng phần mềm.
+ * TFT refresh một khung chỉ ~35 ms nên không cần gộp khung nặng như
+ * e-paper trước đây. Vẫn giữ một cửa sổ gộp nhỏ (SETTLE_MS) để dồn
+ * các bản tin status đến sát nhau thành một lần vẽ, và MIN_GAP_MS để
+ * chống rung khi trạng thái nhấp nháy.
  */
-#define SETTLE_MS   700
-#define MIN_GAP_MS 1500
+#define SETTLE_MS   60
+#define MIN_GAP_MS 120
 
 /*
  * Bố cục tự co theo kích thước tấm: chia màn thành bốn dải theo tỉ lệ,
- * và mỗi chuỗi tự chọn cỡ chữ lớn nhất còn lọt bề rộng. Nhờ vậy đổi tấm
- * e-paper chỉ cần sửa EPD_PANEL_W/H, không phải thiết kế lại toạ độ.
+ * và mỗi chuỗi tự chọn cỡ chữ lớn nhất còn lọt bề rộng. Nhờ vậy bố cục
+ * không phụ thuộc cứng vào đúng 240x320.
  *
  *   +------------------------+
  *   | SMARTKEY   [DA KET NOI]|  dải tiêu đề
@@ -106,10 +104,9 @@ static void draw_header(lcd_link_state_t link)
     lcd_gfx_text(PAD, (HDR_H - LCD_GLYPH_H) / 2, "SMARTKEY", 1,
                  LCD_INK, LCD_PAPER);
 
-    /* Đã kết nối = nền đảo, chưa nối = viền. Không có màu nên trạng thái
-     * phải phân biệt bằng hình khối. */
+    /* Đã kết nối = nền xanh lá, chưa nối = viền đen trên nền trắng. */
     if (link == LCD_LINK_CONNECTED) {
-        lcd_gfx_text_box(bx, by, bw, bh, txt, sc, LCD_PAPER, LCD_INK);
+        lcd_gfx_text_box(bx, by, bw, bh, txt, sc, LCD_PAPER, LCD_GREEN);
     } else {
         lcd_gfx_text_box(bx, by, bw, bh, txt, sc, LCD_INK, LCD_PAPER);
         lcd_gfx_rect(bx, by, bw, bh, 1, LCD_INK);
@@ -163,15 +160,15 @@ static void draw_speed(const lcd_status_t *st)
     draw_bar(y, bar_h, st->running ? st->speed : 0);
     y += bar_h + 3;
 
-    /* "!" thay cho màu hổ phách của bản TFT: e-paper không có màu. */
+    /* "!" danh dau khi server dang gioi han toc do vi an toan. */
     snprintf(buf, sizeof(buf), "%sYC %u  VUNG %u",
              st->safety_limited ? "! " : "",
              (unsigned)st->requested_speed, (unsigned)st->zone);
     fit_center(y, buf, 1, LCD_INK, LCD_PAPER);
 }
 
-/* Mức nghiêm trọng mã hoá bằng hình khối chứ không phải màu:
- *   0 = viền mảnh   1 = viền dày   2 = nền đảo đặc */
+/* Mức nghiêm trọng mã hoá bằng cả hình khối lẫn màu:
+ *   0 = viền mảnh   1 = viền dày   2 = nền đỏ đặc chữ trắng */
 static int alert_weight(treadmill_alert_t alert)
 {
     switch (alert) {
@@ -206,12 +203,12 @@ static void draw_alert(treadmill_alert_t alert)
     }
 
     const int     w  = alert_weight(alert);
-    const uint8_t bg = (w == 2) ? LCD_INK : LCD_PAPER;
+    const uint8_t bg = (w == 2) ? LCD_RED : LCD_PAPER;
     const uint8_t fg = (w == 2) ? LCD_PAPER : LCD_INK;
 
     lcd_gfx_fill_rect(PAD, AL_Y, INNER_W, AL_H, bg);
     lcd_gfx_rect(PAD, AL_Y, INNER_W, AL_H, (w == 1) ? 3 : (w == 2) ? 2 : 1,
-                 LCD_INK);
+                 (w == 2) ? LCD_RED : LCD_INK);
 
     const int inset = 6;
     const int bx    = PAD + inset;
@@ -230,8 +227,7 @@ static void draw_alert(treadmill_alert_t alert)
     }
 }
 
-/* Dựng lại toàn bộ khung. E-paper không vẽ lại từng ô được, nên mỗi lần
- * cập nhật là vẽ cả màn rồi refresh một lần. */
+/* Dựng lại toàn bộ khung trong framebuffer rồi đẩy một lần. */
 static void render(const lcd_status_t *st, lcd_link_state_t link)
 {
     lcd_gfx_reset_dropped();
@@ -353,5 +349,5 @@ void lcd_display_set_status(const lcd_status_t *st)
 
 void lcd_display_backlight(bool on)
 {
-    (void)on;   /* e-paper khong co den nen */
+    lcd_gfx_backlight(on);
 }

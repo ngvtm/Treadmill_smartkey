@@ -1,6 +1,6 @@
 /*
- * Test lop ve e-paper: bang font, hinh hoc chu, cat bien, dong goi 1 bpp,
- * va chuoi init SSD1680.
+ * Test lop ve TFT: bang font, hinh hoc chu, cat bien, palette 2 bpp ->
+ * RGB565, va chuoi init ILI9341/ST7789.
  */
 #include "fake_panel.h"
 #include "lcd_gfx.h"
@@ -22,49 +22,46 @@ static const char *const kUiStrings[] = {
     "AN TOAN", "CANH BAO 1", "GIAM TOC DO", "CANH BAO 2", "SAP DUNG MAY",
     "NGUY HIEM", "DUNG NGAY", "KHONG CO NGUOI", "TREN BAN CHAY",
     "BI TU CHOI", "KIEM TRA MAY", "KHONG RO",
+    "KHOA AN TOAN", "DA BI BUT RA",
     "! YC 255  VUNG 255", "YC 10  VUNG 3", "--", "0", "10",
 };
 #define UI_COUNT (int)(sizeof(kUiStrings) / sizeof(kUiStrings[0]))
 
-TEST_MAIN_BEGIN("lcd_gfx (e-paper)")
+TEST_MAIN_BEGIN("lcd_gfx (TFT)")
 
     CHECK_EQ(lcd_gfx_init(), ESP_OK, "lcd_gfx_init");
 
     /* ---------------------------------------------------------------- */
-    TEST("Chuoi init SSD1680 dung tham so theo kich thuoc tam");
-
-    CHECK(fp_saw_swreset, "thieu SWRESET (0x12)");
-    CHECK_EQ(fp_driver_mux, EPD_PANEL_H - 1,
-             "so gate phai bang chieu cao tam - 1");
-    CHECK_EQ(fp_data_entry, 0x03, "data entry phai la X tang / Y tang");
-    CHECK_EQ(fp_ram_x_end, EPD_PANEL_W / 8 - 1,
-             "gioi han X tinh theo byte, khong phai pixel");
-    CHECK_EQ(fp_ram_y_end, EPD_PANEL_H - 1, "gioi han Y");
-
-    /* ---------------------------------------------------------------- */
-    TEST("Cau hinh SPI va chan khop DESPI-C02");
-
-    CHECK_EQ(fake_spi_bus_cfg.sclk_io_num, EPD_PIN_SCK, "SCK");
-    CHECK_EQ(fake_spi_bus_cfg.mosi_io_num, EPD_PIN_SDI, "SDI -> MOSI");
+    TEST("Chuoi init TFT dung: reset, RGB565, bat man");
+    CHECK(fp_saw_swreset, "thieu SWRESET (0x01)");
+    CHECK_EQ(fp_colmod, 0x55, "COLMOD phai la RGB565 (0x55)");
+    CHECK_EQ(fp_madctl, 0x48, "MADCTL ILI9341 mac dinh (MX+BGR)");
+    CHECK(fp_saw_slpout >= 1, "thieu SLPOUT (thoat sleep)");
+    CHECK(fp_saw_dispon >= 1, "thieu DISPON (bat hien thi)");
+    CHECK_EQ(fake_spi_bus_cfg.sclk_io_num, TFT_PIN_SCK, "SCK");
+    CHECK_EQ(fake_spi_bus_cfg.mosi_io_num, TFT_PIN_SDI, "SDI -> MOSI");
     CHECK_EQ(fake_spi_bus_cfg.miso_io_num, -1, "khong doc nguoc tu panel");
-    CHECK_EQ(fake_io_cfg.dc_gpio_num, EPD_PIN_DC, "D/C");
-    CHECK_EQ(fake_io_cfg.cs_gpio_num, EPD_PIN_CS, "CS");
+    CHECK_EQ(fake_io_cfg.dc_gpio_num, TFT_PIN_DC, "D/C");
+    CHECK_EQ(fake_io_cfg.cs_gpio_num, TFT_PIN_CS, "CS");
     CHECK_EQ(fake_io_cfg.lcd_cmd_bits, 8, "lenh 8 bit");
     CHECK_EQ(fake_io_cfg.lcd_param_bits, 8, "tham so 8 bit");
-    CHECK(fake_spi_bus_cfg.max_transfer_sz >= (size_t)(EPD_PANEL_W / 8) * EPD_PANEL_H,
-          "max_transfer_sz phai chua het framebuffer trong mot lan");
-    CHECK((fake_gpio_configured_mask & (1ULL << EPD_PIN_BUSY)) != 0,
-          "chan BUSY phai duoc gpio_config");
-    CHECK((fake_gpio_configured_mask & (1ULL << EPD_PIN_RST)) != 0,
-          "chan RES phai duoc gpio_config");
+    CHECK_EQ(fake_io_cfg.pclk_hz, 40 * 1000 * 1000, "SPI TFT mac dinh 40 MHz");
+    CHECK(fake_spi_bus_cfg.max_transfer_sz >= (size_t)(LCD_W * 16 * 2),
+          "transfer size %d phai chua mot dai RGB565",
+          (int)fake_spi_bus_cfg.max_transfer_sz);
+    CHECK((fake_gpio_configured_mask & (1ULL << TFT_PIN_BL)) != 0,
+          "phai cau hinh chan den nen BL");
+    CHECK((fake_gpio_configured_mask & (1ULL << TFT_PIN_RST)) != 0,
+          "phai cau hinh chan RES");
+    CHECK_EQ(fake_gpio_level[TFT_PIN_BL], 1, "den nen phai bat sau init");
 
     /* ---------------------------------------------------------------- */
     TEST("Moi chan deu xuat duoc va khong trung nhau");
     {
         const struct { const char *name; int pin; } pins[] = {
-            {"BUSY", EPD_PIN_BUSY}, {"RES", EPD_PIN_RST},
-            {"D/C",  EPD_PIN_DC},   {"CS",  EPD_PIN_CS},
-            {"SCK",  EPD_PIN_SCK},  {"SDI", EPD_PIN_SDI},
+            {"BL",  TFT_PIN_BL},  {"RES", TFT_PIN_RST},
+            {"D/C", TFT_PIN_DC},  {"CS",  TFT_PIN_CS},
+            {"SCK", TFT_PIN_SCK}, {"SDI", TFT_PIN_SDI},
         };
         const int n = (int)(sizeof(pins) / sizeof(pins[0]));
         const int btn[] = {21, 22, 23};
@@ -92,31 +89,42 @@ TEST_MAIN_BEGIN("lcd_gfx (e-paper)")
     }
 
     /* ---------------------------------------------------------------- */
-    TEST("Dong goi 1 bpp: bit 1 la trang, bit 0 la den");
+    TEST("Flush day du mot khung RGB565, palette dung");
     {
         fp_reset();
         lcd_gfx_clear(LCD_PAPER);
         lcd_gfx_flush();
-        CHECK_EQ(fp_flushes, 1, "flush phai gui dung mot lan ghi RAM");
-        CHECK_EQ(fp_bytes, (EPD_PANEL_W / 8) * EPD_PANEL_H,
-                 "kich thuoc anh gui di");
-        CHECK_EQ(fp_oob, 0, "ghi sai kich thuoc");
+        CHECK_EQ(fp_frames, 1, "flush phai gui dung mot khung");
+        CHECK_EQ(fp_ramwr, LCD_H / 16, "khung chia thanh cac dai 16 dong");
+        CHECK_EQ(fp_bytes, LCD_W * LCD_H * 2,
+                 "kich thuoc anh RGB565 gui di");
+        CHECK_EQ(fp_oob, 0, "ghi sai kich thuoc/cua so");
         CHECK(fp_uniform(0, 0, LCD_W, LCD_H, LCD_PAPER), "clear trang");
 
         lcd_gfx_clear(LCD_INK);
         lcd_gfx_flush();
         CHECK(fp_uniform(0, 0, LCD_W, LCD_H, LCD_INK), "clear den");
+
+        lcd_gfx_clear(LCD_RED);
+        lcd_gfx_flush();
+        CHECK(fp_uniform(0, 0, LCD_W, LCD_H, LCD_RED), "clear do (palette)");
+
+        lcd_gfx_clear(LCD_GREEN);
+        lcd_gfx_flush();
+        CHECK(fp_uniform(0, 0, LCD_W, LCD_H, LCD_GREEN), "clear xanh la (palette)");
     }
 
     /* ---------------------------------------------------------------- */
-    TEST("Kich hoat refresh sau moi lan flush");
+    TEST("Sleep tat man, flush danh thuc va init lai");
     {
-        const int before = fp_saw_master_act;
+        const int dispon_before = fp_saw_dispon;
+        lcd_gfx_sleep();
+        CHECK(fp_saw_dispoff >= 1, "sleep phai gui DISPOFF");
+        CHECK(fp_saw_slpin >= 1, "sleep phai gui SLPIN");
         lcd_gfx_clear(LCD_PAPER);
         lcd_gfx_flush();
-        CHECK_EQ(fp_saw_master_act, before + 1,
-                 "thieu MASTER_ACTIVATION -> anh nam trong RAM, man khong doi");
-        CHECK_EQ(fp_update_seq, 0xF7, "chuoi refresh toan phan");
+        CHECK(fp_saw_dispon > dispon_before,
+              "flush sau sleep phai init lai panel (DISPON lai)");
     }
 
     /* ---------------------------------------------------------------- */

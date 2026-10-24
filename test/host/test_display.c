@@ -1,5 +1,5 @@
 /*
- * Test tang hien thi e-paper. Nap thang lcd_display.c de cham duoc vao
+ * Test tang hien thi TFT. Nap thang lcd_display.c de cham duoc vao
  * render() va cac hang so bo cuc (deu la static/#define trong file do).
  */
 #include "fake_panel.h"
@@ -31,7 +31,15 @@ static const treadmill_alert_t kAlerts[] = {
     TREADMILL_ALERT_NONE, TREADMILL_ALERT_WARNING_1,
     TREADMILL_ALERT_WARNING_2, TREADMILL_ALERT_DANGER,
     TREADMILL_ALERT_NO_PERSON, TREADMILL_ALERT_CMD_REJECTED,
+    TREADMILL_ALERT_SAFETY_KEY_OUT,
 };
+
+/* So pixel khong phai nen trang trong dai canh bao: dai nghiem trong
+ * gio nen do chu trang nen dem "muc den" khong con dung nua. */
+static int alert_filled(void)
+{
+    return INNER_W * AL_H - fp_count(PAD, AL_Y, INNER_W, AL_H, LCD_PAPER);
+}
 #define ALERT_COUNT (int)(sizeof(kAlerts) / sizeof(kAlerts[0]))
 
 static unsigned band_hash(const band_t *b)
@@ -45,7 +53,7 @@ static unsigned band_hash(const band_t *b)
     return h;
 }
 
-TEST_MAIN_BEGIN("lcd_display (e-paper)")
+TEST_MAIN_BEGIN("lcd_display (TFT)")
 
     CHECK_EQ(lcd_display_init(), ESP_OK, "lcd_display_init");
     CHECK(fake_task_fn != NULL, "phai tao task ve");
@@ -98,8 +106,8 @@ TEST_MAIN_BEGIN("lcd_display (e-paper)")
         lcd_status_t st = {.running = true, .speed = 4};
         fp_reset();
         render(&st, LCD_LINK_CONNECTED);
-        CHECK_EQ(fp_flushes, 1, "e-paper phai gui tron mot khung moi lan");
-        CHECK_EQ(fp_saw_master_act > 0, 1, "phai kich hoat refresh");
+        CHECK_EQ(fp_frames, 1, "moi lan render phai gui tron mot khung");
+        CHECK_EQ(fp_bytes, LCD_W * LCD_H * 2, "khung RGB565 day du");
     }
 
     /* ---------------------------------------------------------------- */
@@ -192,7 +200,7 @@ TEST_MAIN_BEGIN("lcd_display (e-paper)")
             lcd_status_t st = {.running = true, .speed = 3, .alert = kAlerts[i]};
             render(&st, LCD_LINK_CONNECTED);
             sig[i] = band_hash(&kBands[3]);
-            CHECK(fp_ink(PAD, AL_Y, INNER_W, AL_H) > 0,
+            CHECK(alert_filled() > 0,
                   "alert %d ve ra o trong", (int)kAlerts[i]);
         }
         for (int i = 0; i < ALERT_COUNT; i++) {
@@ -205,27 +213,27 @@ TEST_MAIN_BEGIN("lcd_display (e-paper)")
 
         lcd_status_t bad = {.running = true, .alert = (treadmill_alert_t)99};
         render(&bad, LCD_LINK_CONNECTED);
-        CHECK(fp_ink(PAD, AL_Y, INNER_W, AL_H) > 0,
+        CHECK(alert_filled() > 0,
               "alert la phai hien KHONG RO");
     }
 
     /* ---------------------------------------------------------------- */
-    TEST("Muc nghiem trong ma hoa bang hinh khoi, khong bang mau");
+    TEST("Muc nghiem trong ma hoa bang mau do + hinh khoi");
     {
-        /* Khong co mau nen canh bao nang phai dao nen: da so o la muc den. */
+        /* Canh bao nang nhat = nen do dac: qua nua dai la mau do,
+         * trong khi AN TOAN khong co pixel do nao. */
         lcd_status_t safe = {.running = true, .alert = TREADMILL_ALERT_NONE};
         render(&safe, LCD_LINK_CONNECTED);
-        const int ink_safe = fp_ink(PAD, AL_Y, INNER_W, AL_H);
+        const int red_safe = fp_count(PAD, AL_Y, INNER_W, AL_H, LCD_RED);
+        CHECK_EQ(red_safe, 0, "AN TOAN khong duoc co mau do");
 
         lcd_status_t danger = {.running = true, .alert = TREADMILL_ALERT_DANGER};
         render(&danger, LCD_LINK_CONNECTED);
-        const int ink_danger = fp_ink(PAD, AL_Y, INNER_W, AL_H);
-
-        CHECK(ink_danger > ink_safe * 3,
-              "NGUY HIEM phai dam hon han AN TOAN (%d so voi %d muc)",
-              ink_danger, ink_safe);
-        CHECK(ink_danger > INNER_W * AL_H / 2,
-              "NGUY HIEM phai dao nen, chiem qua nua o");
+        const int red_danger = fp_count(PAD, AL_Y, INNER_W, AL_H, LCD_RED);
+        CHECK(red_danger > INNER_W * AL_H / 2,
+              "NGUY HIEM phai nen do, chiem qua nua o (%d do)", red_danger);
+        const int paper_danger = fp_count(PAD, AL_Y, INNER_W, AL_H, LCD_PAPER);
+        CHECK(paper_danger > 0, "chu trang phai noi tren nen do");
     }
 
     /* ---------------------------------------------------------------- */
