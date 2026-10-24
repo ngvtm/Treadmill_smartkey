@@ -37,3 +37,34 @@ menu "Example Configuration"
             Used for internal test ONLY.
             Use this option to advertise in a specific random address.
 endmenu
+
+menu "Smartkey TFT Display"
+
+    choice TFT_PANEL_DRIVER
+        prompt "TFT panel driver IC (2.4 inch, 240x320, SPI)"
+        default TFT_PANEL_ILI9341
+        help
+            The generic 2.4" 240x320 SPI modules (often marked
+            v1.3, usually with XPT2046 touch fitted but unused here)
+            are almost always ILI9341. If the screen stays white or
+            colors look inverted after flashing, switch to ST7789 -
+            no code change needed.
+
+        config TFT_PANEL_ILI9341
+            bool "ILI9341"
+
+        config TFT_PANEL_ST7789
+            bool "ST7789"
+
+    endchoice
+
+    config TFT_SPI_HZ
+        int "TFT SPI clock (Hz)"
+        default 40000000
+        range 1000000 80000000
+        help
+            40 MHz is a safe write clock for both ILI9341 and
+            ST7789 modules on short jumper wires; lower it to
+            20 MHz if long wires cause noise/sparkles.
+
+endmenu

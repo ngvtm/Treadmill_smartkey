@@ -12,29 +12,34 @@
 #include "freertos/task.h"
 
 /*
- * Panel e-paper gia: giai ma lenh SSD1680, dung lai anh 1 bpp thanh
- * framebuffer 1 byte/pixel de test assert tren pixel that.
+ * Panel TFT gia: giai ma lenh ILI9341/ST7789, dung lai anh RGB565
+ * thanh framebuffer palette de test assert tren pixel that.
  */
 uint8_t fp_fb[FP_H][FP_W];
 
-int fp_flushes;
+int fp_frames;
+int fp_ramwr;
 int fp_bytes;
 int fp_oob;
 
 int fp_saw_swreset;
-int fp_saw_master_act;
-int fp_driver_mux = -1;
-int fp_data_entry = -1;
-int fp_ram_x_end  = -1;
-int fp_ram_y_end  = -1;
-int fp_update_seq = -1;
-int fp_deep_sleep;
+int fp_saw_slpout;
+int fp_saw_dispon;
+int fp_saw_dispoff;
+int fp_saw_slpin;
+int fp_saw_invon;
+int fp_colmod = -1;
+int fp_madctl = -1;
+int fp_win_x0 = -1, fp_win_x1 = -1, fp_win_y0 = -1, fp_win_y1 = -1;
+
+static int s_cx, s_cy;   /* con tro ghi trong cua so RAM */
 
 void fp_reset(void)
 {
-    fp_flushes = 0;
-    fp_bytes   = 0;
-    fp_oob     = 0;
+    fp_frames = 0;
+    fp_ramwr  = 0;
+    fp_bytes  = 0;
+    fp_oob    = 0;
 }
 
 void fp_clear(uint8_t color)
@@ -105,58 +110,81 @@ esp_err_t esp_lcd_panel_io_tx_param(esp_lcd_panel_io_handle_t io, int cmd,
     const uint8_t *p = (const uint8_t *)param;
 
     switch (cmd) {
-    case 0x12: fp_saw_swreset = 1; break;
-    case 0x20: fp_saw_master_act++; break;
-    case 0x10: if (len >= 1) { fp_deep_sleep = p[0]; } break;
-    case 0x01: if (len >= 3) { fp_driver_mux = p[0] | (p[1] << 8); } break;
-    case 0x11: if (len >= 1) { fp_data_entry = p[0]; } break;
-    case 0x44: if (len >= 2) { fp_ram_x_end = p[1]; } break;
-    case 0x45: if (len >= 4) { fp_ram_y_end = p[2] | (p[3] << 8); } break;
-    case 0x22: if (len >= 1) { fp_update_seq = p[0]; } break;
+    case 0x01: fp_saw_swreset = 1; break;
+    case 0x11: fp_saw_slpout++; break;
+    case 0x29: fp_saw_dispon++; break;
+    case 0x28: fp_saw_dispoff++; break;
+    case 0x10: fp_saw_slpin++; break;
+    case 0x21: fp_saw_invon = 1; break;
+    case 0x3A: if (len >= 1) { fp_colmod = p[0]; } break;
+    case 0x36: if (len >= 1) { fp_madctl = p[0]; } break;
+    case 0x2A:
+        if (len >= 4) {
+            fp_win_x0 = (p[0] << 8) | p[1];
+            fp_win_x1 = (p[2] << 8) | p[3];
+        }
+        break;
+    case 0x2B:
+        if (len >= 4) {
+            fp_win_y0 = (p[0] << 8) | p[1];
+            fp_win_y1 = (p[2] << 8) | p[3];
+            s_cx = fp_win_x0;
+            s_cy = fp_win_y0;
+        }
+        break;
     default:   break;
     }
     return ESP_OK;
+}
+
+static uint8_t palette_of(uint16_t rgb)
+{
+    switch (rgb) {
+    case 0xFFFF: return LCD_PAPER;
+    case 0x0000: return LCD_INK;
+    case 0xF800: return LCD_RED;
+    case 0x07E0: return LCD_GREEN;
+    default:     return 0xEE;   /* mau la: test se bat qua fp_oob */
+    }
 }
 
 esp_err_t esp_lcd_panel_io_tx_color(esp_lcd_panel_io_handle_t io, int cmd,
                                     const void *color, size_t len)
 {
     (void)io;
-    if (cmd != 0x24) {
+    if (cmd != 0x2C) {
         return ESP_OK;
     }
 
-    const uint8_t *raw    = (const uint8_t *)color;
-    const int      stride = EPD_PANEL_W / 8;
+    const uint8_t *raw = (const uint8_t *)color;
 
-    fp_flushes++;
+    fp_ramwr++;
     fp_bytes += (int)len;
+    if (fp_win_y0 == 0 && fp_win_x0 == 0 && s_cy == 0) {
+        fp_frames++;            /* dai dau tien cua mot khung moi */
+    }
 
-    if ((int)len != stride * EPD_PANEL_H) {
+    if ((len & 1) || fp_win_x0 < 0 || fp_win_y0 < 0) {
         fp_oob++;
         return ESP_OK;
     }
 
-    for (int py = 0; py < EPD_PANEL_H; py++) {
-        for (int px = 0; px < EPD_PANEL_W; px++) {
-            const uint8_t byte = raw[py * stride + (px >> 3)];
-            const int     bit  = (byte >> (7 - (px & 7))) & 1;
-            /* RAM SSD168x: bit 1 = trang, 0 = den. */
-            const uint8_t v = bit ? LCD_PAPER : LCD_INK;
-
-            /* Gio toa do panel -> toa do logic, nguoc voi put_px(). */
-#if EPD_ROTATION
-            const int lx = EPD_PANEL_H - 1 - py;
-            const int ly = px;
-#else
-            const int lx = px;
-            const int ly = py;
-#endif
-            if (lx >= 0 && lx < FP_W && ly >= 0 && ly < FP_H) {
-                fp_fb[ly][lx] = v;
-            } else {
-                fp_oob++;
-            }
+    for (size_t i = 0; i + 1 < len; i += 2) {
+        const uint16_t rgb = (uint16_t)((raw[i] << 8) | raw[i + 1]);
+        const uint8_t  v   = palette_of(rgb);
+        if (v == 0xEE) {
+            fp_oob++;
+        }
+        if (s_cx > fp_win_x1 || s_cy > fp_win_y1 ||
+            s_cx < 0 || s_cx >= FP_W || s_cy < 0 || s_cy >= FP_H) {
+            fp_oob++;
+        } else {
+            fp_fb[s_cy][s_cx] = v;
+        }
+        s_cx++;
+        if (s_cx > fp_win_x1) {
+            s_cx = fp_win_x0;
+            s_cy++;
         }
     }
     return ESP_OK;
@@ -166,7 +194,6 @@ esp_err_t esp_lcd_panel_io_tx_color(esp_lcd_panel_io_handle_t io, int cmd,
 
 uint64_t fake_gpio_configured_mask;
 int      fake_gpio_level[64];
-int      fake_gpio_busy_pin = -1;
 
 esp_err_t gpio_config(const gpio_config_t *cfg)
 {
@@ -184,10 +211,6 @@ esp_err_t gpio_set_level(int pin, int level)
 
 int gpio_get_level(int pin)
 {
-    /* BUSY luon bao ranh, khong thi wait_busy() se treo het timeout. */
-    if (pin == EPD_PIN_BUSY) {
-        return 0;
-    }
     return (pin >= 0 && pin < 64) ? fake_gpio_level[pin] : 1;
 }
 
