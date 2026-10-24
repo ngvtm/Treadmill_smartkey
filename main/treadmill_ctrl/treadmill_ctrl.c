@@ -37,6 +37,7 @@ static const char *alert_to_str(uint8_t alert)
     case TREADMILL_ALERT_DANGER:       return "DANGER";
     case TREADMILL_ALERT_NO_PERSON:    return "NO_PERSON";
     case TREADMILL_ALERT_CMD_REJECTED: return "CMD_REJECTED";
+    case TREADMILL_ALERT_SAFETY_KEY_OUT: return "SAFETY_KEY_OUT";
     default:                           return "UNKNOWN";
     }
 }
@@ -132,7 +133,8 @@ void treadmill_ctrl_handle_status(const uint8_t *data, uint16_t len)
         s_enabled = false;
     }
 
-    if (s_server_alert == TREADMILL_ALERT_CMD_REJECTED) {
+    if (s_server_alert == TREADMILL_ALERT_CMD_REJECTED ||
+        s_server_alert == TREADMILL_ALERT_SAFETY_KEY_OUT) {
         s_enabled = false;
     }
 

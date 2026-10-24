@@ -196,6 +196,8 @@ static void draw_alert(treadmill_alert_t alert)
         l1 = "KHONG CO NGUOI"; l2 = "TREN BAN CHAY"; break;
     case TREADMILL_ALERT_CMD_REJECTED:
         l1 = "BI TU CHOI";     l2 = "KIEM TRA MAY";  break;
+    case TREADMILL_ALERT_SAFETY_KEY_OUT:
+        l1 = "KHOA AN TOAN";   l2 = "DA BI BUT RA";  break;
     default:
         l1 = "KHONG RO";       l2 = NULL;            break;
     }
