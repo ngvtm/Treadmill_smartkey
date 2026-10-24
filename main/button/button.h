@@ -12,9 +12,11 @@ extern "C" {
  * Physical button module.
  * Wiring: button connects GPIO to GND, using internal pull-up.
  *
- * GPIO21 = Toggle
- * GPIO22 = Speed Up
- * GPIO23 = Speed Down
+ * Touch-controls design (Phase 1): the treadmill is driven from the
+ * touch screen; the hard buttons are power + safety only.
+ * GPIO21 = Power (hold 2 s = standby, press = wake)
+ * GPIO22 = Emergency stop (press = instant OFF)
+ * GPIO23 = Emergency stop, redundant (press = instant OFF)
  *
  * Phase 1, S1.3: the module polls (20 ms) instead of firing on the
  * interrupt edge, so one task can track all three buttons independently
@@ -27,9 +29,9 @@ extern "C" {
  */
 
 typedef enum {
-    BUTTON_ID_TOGGLE     = 0,   /* GPIO21 - Toggle treadmill */
-    BUTTON_ID_SPEED_UP   = 1,   /* GPIO22 - Speed up */
-    BUTTON_ID_SPEED_DOWN = 2,   /* GPIO23 - Speed down */
+    BUTTON_ID_POWER      = 0,   /* GPIO21 - Power: HOLD = standby, PRESS = wake */
+    BUTTON_ID_ESTOP_1    = 1,   /* GPIO22 - Emergency stop: PRESS = instant OFF */
+    BUTTON_ID_ESTOP_2    = 2,   /* GPIO23 - Emergency stop, redundant */
     BUTTON_ID_MAX
 } button_id_t;
 

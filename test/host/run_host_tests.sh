@@ -35,4 +35,9 @@ gcc -std=gnu17 -Wall -Wextra -g -O1 -I../../main \
     test_touch_cal.c -o /tmp/test_touch_cal
 /tmp/test_touch_cal | tail -1
 
+echo "=== test_touch_controls ==="
+gcc -std=gnu17 -Wall -Wextra -g -O1 -I../../main \
+    test_touch_controls.c -o /tmp/test_touch_controls
+/tmp/test_touch_controls | tail -1
+
 echo "ALL SMARTKEY HOST SUITES PASSED"

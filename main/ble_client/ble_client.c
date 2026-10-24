@@ -31,6 +31,19 @@ void ble_client_clear_connection(void)
     MODLOG_DFLT(INFO, "ble_client: connection cleared\n");
 }
 
+// Actively drop the link (power standby). The GAP disconnect handler
+// clears the stored handle and, unless standby suppresses it, rescans.
+void ble_client_disconnect(void)
+{
+    if (s_conn_handle == BLE_HS_CONN_HANDLE_NONE) {
+        return;
+    }
+    int rc = ble_gap_terminate(s_conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+    if (rc != 0) {
+        MODLOG_DFLT(ERROR, "ble_client: terminate failed rc=%d\n", rc);
+    }
+}
+
 bool ble_client_is_ready(void)
 {
     return (s_conn_handle != BLE_HS_CONN_HANDLE_NONE)

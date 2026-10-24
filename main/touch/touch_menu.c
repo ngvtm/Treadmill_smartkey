@@ -2,6 +2,9 @@
 #include "touch_menu.h"
 #include "touch_xpt2046.h"
 #include "touch_calibration.h"
+#include "touch_controls_logic.h"
+
+#include "standby.h"
 
 #include "ble_client/ble_client.h"
 #include "lcd/lcd_display.h"
@@ -233,6 +236,8 @@ static void exit_menu(void)
     ESP_LOGI(TAG, "menu closed");
 }
 
+static touch_ctrl_state_t s_ctrl;
+
 static void touch_task(void *arg)
 {
     (void)arg;
@@ -240,10 +245,31 @@ static void touch_task(void *arg)
     uint32_t hold_since_ms = 0;
     bool was_touched = false;
     uint32_t last_touch_ms = 0;
+    touch_ctrl_init(&s_ctrl);
+
+    // Touch is now the main control, so calibration is mandatory, not
+    // menu-only: on first boot without a stored calibration, calibrate
+    // before the main screen. A timeout aborts (60 s, first tap) and
+    // leaves the default map plus the uncalibrated banner.
+    if (!s_calibrated) {
+        lcd_display_pause();
+        run_calibration();
+        lcd_display_set_uncalibrated(!s_calibrated);
+        lcd_display_resume();
+    }
 
     while (1) {
         esp_task_wdt_reset();
         uint32_t now_ms = pdTICKS_TO_MS(xTaskGetTickCount());
+        if (smartkey_standby_is_active()) {
+            // Key asleep: ignore all input and reset gesture state so
+            // a touch held across wake cannot fire anything.
+            touch_ctrl_init(&s_ctrl);
+            hold_since_ms = 0;
+            was_touched = false;
+            vTaskDelay(pdMS_TO_TICKS(MENU_POLL_MS));
+            continue;
+        }
         touch_raw_t raw;
         bool touched = touch_xpt2046_read_raw(&raw);
         touch_screen_t scr = touch_cal_map(&s_cal, raw);
@@ -266,6 +292,7 @@ static void touch_task(void *arg)
                         lcd_display_pause();
                         s_state = MENU_CALIBRATING;
                         run_calibration();
+                        lcd_display_set_uncalibrated(!s_calibrated);
                         s_state = MENU_CLOSED;
                         lcd_display_resume();
                     } else {
@@ -275,6 +302,37 @@ static void touch_task(void *arg)
                 }
             } else {
                 hold_since_ms = 0;
+            }
+            // Main-screen touch controls. Only when connected; the ctrl
+            // layer itself gates ON/speed, and OFF is never gated.
+            // During a severe alert the speed zones go dead but the
+            // power zone stays live for OFF.
+            {
+                static uint8_t last_hold_pct = 0xFF;
+                bool running = treadmill_ctrl_is_running();
+                touch_zone_t zone = TOUCH_ZONE_NONE;
+                if (touched && scr.x >= 0 && scr.y >= 0 &&
+                    ble_client_is_ready()) {
+                    zone = touch_zone_at(scr.x, scr.y);
+                    if (treadmill_ctrl_is_severe_alert() &&
+                        zone != TOUCH_ZONE_POWER) {
+                        zone = TOUCH_ZONE_NONE;
+                    }
+                }
+                touch_ctrl_action_t act = touch_ctrl_update(
+                    &s_ctrl, zone, touched, now_ms, running);
+                switch (act) {
+                case TOUCH_CTRL_ON:         treadmill_ctrl_request_on(); break;
+                case TOUCH_CTRL_OFF:        treadmill_ctrl_request_off(); break;
+                case TOUCH_CTRL_SPEED_UP:   treadmill_ctrl_speed_up(); break;
+                case TOUCH_CTRL_SPEED_DOWN: treadmill_ctrl_speed_down(); break;
+                default: break;
+                }
+                uint8_t frac = touch_ctrl_hold_frac(&s_ctrl, now_ms, running);
+                if (frac != last_hold_pct) {
+                    lcd_display_set_power_hold(frac);
+                    last_hold_pct = frac;
+                }
             }
             was_touched = touched;
         } else if (s_state == MENU_OPEN) {
@@ -307,6 +365,7 @@ static void touch_task(void *arg)
                 } else if (row == 2) {
                     s_state = MENU_CALIBRATING;
                     run_calibration();
+                    lcd_display_set_uncalibrated(!s_calibrated);
                     s_state = MENU_OPEN;
                     s_last_mask = 0xFF;
                     draw_menu();

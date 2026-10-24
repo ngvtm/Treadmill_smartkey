@@ -17,9 +17,15 @@
 #include "button/button.h"
 #include "lcd/lcd_display.h"
 #include "touch/touch_menu.h"
+#include "standby.h"
+
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *tag = "NimBLE_BLE_CENT";
 static int blecent_gap_event(struct ble_gap_event *event, void *arg);
+static void blecent_scan(void);
 
 void ble_store_config_init(void);
 
@@ -33,32 +39,86 @@ static const ble_uuid_t *remote_chr_uuid =
                         0x22, 0x22, 0x22, 0x22, 0x33, 0x33, 0x33, 0x33);
 #endif
 
-/* Phase 1, S1.3: a quick press can only stop the machine; starting it
- * needs the HOLD event (toggle held >= 1.5 s). Speed buttons act on
- * PRESS only — a held speed button does not repeat steps. */
+/* Power standby, USB stage: SOFTWARE standby, not light/deep sleep.
+ * The task watchdog (2 s, three tasks subscribed) makes real sleep
+ * unsafe without a coordinated WDT teardown, and on USB there is no
+ * power to save. So "off" = screen off + BLE disconnect (the server
+ * stops the machine on disconnect) + input ignored; "on" = resume.
+ * True power cut waits for the battery stage's hardware latch. */
+static bool s_standby = false;
+static int64_t s_woke_at_us = 0;
+
+bool smartkey_standby_is_active(void)
+{
+    return s_standby;
+}
+
+static void enter_standby(void)
+{
+    if (s_standby) {
+        return;
+    }
+    // A HOLD fired shortly after wake is the same finger that woke the
+    // key (PRESS wakes first, HOLD follows at 2 s): ignore it, or a
+    // long wake-press would sleep the key again immediately.
+    if (s_woke_at_us != 0 &&
+        esp_timer_get_time() - s_woke_at_us < 2500000) {
+        return;
+    }
+    s_standby = true;
+    bool off_sent = false;
+    if (treadmill_ctrl_is_running() || treadmill_ctrl_is_control_active()) {
+        treadmill_ctrl_request_off();
+        off_sent = true;
+    }
+    if (off_sent) {
+        // Let the OFF packet get airtime before dropping the link;
+        // the server also stops on disconnect, this is belt-and-braces.
+        vTaskDelay(pdMS_TO_TICKS(300));
+    }
+    ble_client_disconnect();
+    lcd_display_backlight(false);
+    lcd_display_pause();
+    ESP_LOGI(tag, "Standby: screen off, BLE disconnected");
+}
+
+static void wake_from_standby(void)
+{
+    if (!s_standby) {
+        return;
+    }
+    s_standby = false;
+    s_woke_at_us = esp_timer_get_time();
+    lcd_display_resume();
+    lcd_display_backlight(true);
+    if (!ble_client_is_ready()) {
+        blecent_scan();
+    }
+    ESP_LOGI(tag, "Wake from standby");
+}
+
+/* Touch-controls design: hard buttons are power + safety only.
+ * POWER: HOLD (2 s) = standby, PRESS = wake (only while asleep).
+ * E-STOP: PRESS = instant OFF, in any screen state except standby
+ * (in standby the machine is already stopped via disconnect). */
 static void on_button_event(button_id_t id, button_event_t event)
 {
     switch (id) {
-    case BUTTON_ID_TOGGLE:
+    case BUTTON_ID_POWER:
+        if (event == BTN_EV_HOLD) {
+            enter_standby();
+        } else if (event == BTN_EV_PRESS) {
+            wake_from_standby();
+        }
+        break;
+    case BUTTON_ID_ESTOP_1:
+    case BUTTON_ID_ESTOP_2:
         if (event == BTN_EV_PRESS) {
-            if (treadmill_ctrl_is_control_active() ||
-                treadmill_ctrl_is_running()) {
-                treadmill_ctrl_request_off();
+            if (s_standby) {
+                ESP_LOGI(tag, "E-STOP ignored in standby (already stopped)");
             } else {
-                ESP_LOGI(tag, "Quick toggle press while stopped: hold 1.5 s to start");
+                treadmill_ctrl_request_off();
             }
-        } else if (event == BTN_EV_HOLD) {
-            treadmill_ctrl_request_on();
-        }
-        break;
-    case BUTTON_ID_SPEED_UP:
-        if (event == BTN_EV_PRESS) {
-            treadmill_ctrl_speed_up();
-        }
-        break;
-    case BUTTON_ID_SPEED_DOWN:
-        if (event == BTN_EV_PRESS) {
-            treadmill_ctrl_speed_down();
         }
         break;
     default:
@@ -341,8 +401,11 @@ blecent_gap_event(struct ble_gap_event *event, void *arg)
         ble_client_clear_connection();
         treadmill_ctrl_init();
         peer_delete(event->disconnect.conn.conn_handle);
-        /* Tự động scan lại để reconnect */
-        blecent_scan();
+        /* Tự động scan lại để reconnect — trừ khi đang standby
+         * (ngủ thì radio phải im, dậy mới quét lại). */
+        if (!s_standby) {
+            blecent_scan();
+        }
         return 0;
 
     case BLE_GAP_EVENT_ENC_CHANGE:

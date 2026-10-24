@@ -21,6 +21,8 @@ void ble_client_set_connection(uint16_t conn_handle, uint16_t chr_val_handle);
 
 /** Xóa thông tin khi disconnect */
 void ble_client_clear_connection(void);
+/** Actively terminate the link (power standby). No-op if not connected. */
+void ble_client_disconnect(void);
 
 /** Kiểm tra đã kết nối và sẵn sàng ghi chưa */
 bool ble_client_is_ready(void);

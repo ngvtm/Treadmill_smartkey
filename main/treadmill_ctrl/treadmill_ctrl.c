@@ -71,6 +71,11 @@ static bool alert_is_severe(uint8_t alert)
            alert == TREADMILL_ALERT_MOTOR_FAULT;
 }
 
+bool treadmill_ctrl_is_severe_alert(void)
+{
+    return alert_is_severe(s_display_alert);
+}
+
 static uint32_t now_ms(void)
 {
     return (uint32_t)((uint64_t)xTaskGetTickCount() * 1000u / configTICK_RATE_HZ);

@@ -94,6 +94,10 @@ màn trắng tinh hoặc không lên dù đã đúng driver IC.</p></div>
 <li><b>Đừng lẫn với nút bấm:</b> GPIO21/22/23 là 3 nút bấm của smartkey, không liên quan tới TFT.</li>
 <li><b>Driver IC:</b> menuconfig mặc định ILI9341; màn trắng/đen bất thường hoặc màu sai hẳn thì đổi
 sang ST7789, không sửa code. Dây dài/nhiễu thì hạ SPI màn hình từ 40 MHz xuống 20 MHz trong cùng menu.</li>
+<li><b>Phím cứng (không phải chân TFT, ghi để khỏi lẫn):</b> GPIO21 = nguồn (giữ 2 s standby /
+bấm dậy), GPIO22 + GPIO23 = dừng khẩn cấp (chạm = OFF tức thì). Từ Phase 1 touch controls,
+phím cứng không còn phát lệnh máy chạy nữa — lệnh đi qua thanh cảm ứng GIAM / BAT-TAT / TANG
+ở đáy màn chính (xem TFT_WIRING.md mục Phase 1).</li>
 <li><b>Kiểm tra sau khi lắp:</b> bật smartkey → đèn nền sáng, hiện khung SMARTKEY + "MAT KET NOI";
 chạm giữ vùng tiêu đề 2 giây khi máy dừng và đã kết nối → lần đầu hiện màn 3 dấu + để hiệu chuẩn,
 sau đó menu 4 hàng. Chi tiết trong <b>TFT_WIRING.md</b> (bảng dây + checklist bring-up).</li>

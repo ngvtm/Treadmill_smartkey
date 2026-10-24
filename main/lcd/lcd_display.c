@@ -1,6 +1,9 @@
 #include "lcd_display.h"
 #include "lcd_gfx.h"
 
+/* Control-bar geometry is single-sourced from the touch hit-test header. */
+#include "../touch/touch_controls_logic.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -25,7 +28,7 @@
 #define MIN_GAP_MS 120
 
 /*
- * Bố cục tự co theo kích thước tấm: chia màn thành bốn dải theo tỉ lệ,
+ * Bố cục tự co theo kích thước tấm: chia màn thành các dải theo tỉ lệ,
  * và mỗi chuỗi tự chọn cỡ chữ lớn nhất còn lọt bề rộng. Nhờ vậy bố cục
  * không phụ thuộc cứng vào đúng 240x320.
  *
@@ -43,26 +46,46 @@
  *   +------------------------+
  *   | ### NGUY HIEM ###      |  dải cảnh báo, nền đảo khi nghiêm trọng
  *   +------------------------+
+ *   | CHUA HIEU CHUAN        |  chỉ khi chưa hiệu chuẩn cảm ứng
+ *   +----------+----------+--+
+ *   | GIAM     | BAT / TAT | TANG |  thanh điều khiển cảm ứng
+ *   +----------+----------+--+
+ * Vùng chạm của thanh điều khiển KHÔNG định nghĩa ở đây: nó sống trong
+ * touch/touch_controls_logic.h và khung này vẽ đúng theo các rect đó.
+ * Đổi một bên mà không đổi bên kia là lệch chạm — đừng làm vậy.
  */
 #define PAD        3
 #define INNER_W    (LCD_W - 2 * PAD)
 
 #define HDR_H      (LCD_H * 11 / 100)
 #define ST_Y       (HDR_H + 3)
-#define ST_H       (LCD_H * 26 / 100)
+#define ST_H       (LCD_H * 15 / 100)
 #define SP_Y       (ST_Y + ST_H + 3)
-#define SP_H       (LCD_H * 36 / 100)
+#define SP_H       (LCD_H * 26 / 100)
 #define AL_Y       (SP_Y + SP_H + 3)
-#define AL_H       (LCD_H - AL_Y - PAD)
+/* The control bar's top edge is single-sourced from the touch header;
+ * the banner and alert band are sized backwards from it so the bar
+ * can never drift away from its hit-test rects. On 240x320 this gives:
+ * AL_Y 175, AL_H 50 (ends 225), CAL_Y 227..241, bar 244..316. */
+#define CAL_H      14
+#define CAL_Y      (TOUCH_CTL_Y0 - CAL_H - 3)
+#define AL_H       (CAL_Y - 2 - AL_Y)
+#define CTL_Y      TOUCH_CTL_Y0
+_Static_assert(TOUCH_CTL_Y1 == LCD_H - PAD,
+               "control bar must end exactly at the bottom margin");
 
 /* Trạng thái mong muốn (do module khác đẩy vào, có khoá bảo vệ). */
 static SemaphoreHandle_t s_lock;
 static lcd_status_t      s_want;
 static lcd_link_state_t  s_want_link;
+static uint8_t           s_want_hold_pct;  /* tiến trình giữ nút BẬT, 0..100 */
+static bool              s_want_uncal;     /* chưa hiệu chuẩn cảm ứng */
 
 /* Trạng thái đã vẽ lên panel, chỉ task vẽ đụng tới. */
 static lcd_status_t      s_shown;
 static lcd_link_state_t  s_shown_link;
+static uint8_t           s_shown_hold_pct;
+static bool              s_shown_uncal;
 static bool              s_have_shown;
 
 static TaskHandle_t      s_task;
@@ -267,8 +290,51 @@ static void draw_alert(treadmill_alert_t alert, uint8_t features_off_mask)
     }
 }
 
+/* Thanh điều khiển cảm ứng ở đáy màn chính. Hình vẽ phải khớp đúng
+ * rect hit-test trong touch_controls_logic.h (đã assert ở trên):
+ * 3 vùng GIAM / BAT-TAT / TANG, viền dày khi đã kết nối (vùng chạm có
+ * tác dụng), viền mảnh khi mất kết nối (chạm không tác dụng).
+ * Khi đang giữ nút BAT để khởi động, phần dưới của nút BAT đầy dần
+ * màu xanh theo tiến trình giữ — user thấy được mình còn giữ bao lâu. */
+static void draw_controls(lcd_link_state_t link, bool running, uint8_t hold_pct)
+{
+    const int h = TOUCH_CTL_Y1 - TOUCH_CTL_Y0;
+    const int bw = link == LCD_LINK_CONNECTED ? 2 : 1;
+    const struct { int x0, x1; const char *label; } zones[3] = {
+        { TOUCH_CTL_DOWN_X0, TOUCH_CTL_DOWN_X1, "GIAM" },
+        { TOUCH_CTL_POWER_X0, TOUCH_CTL_POWER_X1, running ? "TAT" : "BAT" },
+        { TOUCH_CTL_UP_X0, TOUCH_CTL_UP_X1, "TANG" },
+    };
+    for (int i = 0; i < 3; i++) {
+        const int w = zones[i].x1 - zones[i].x0;
+        lcd_gfx_rect(zones[i].x0, TOUCH_CTL_Y0, w, h, bw, LCD_INK);
+    }
+    // Hold progress fill (stopped + holding POWER only; the touch task
+    // reports 0 in every other state).
+    if (hold_pct > 0 && !running) {
+        const int fill_h = h * hold_pct / 100;
+        lcd_gfx_fill_rect(TOUCH_CTL_POWER_X0, TOUCH_CTL_Y1 - fill_h,
+                          TOUCH_CTL_POWER_X1 - TOUCH_CTL_POWER_X0,
+                          fill_h, LCD_GREEN);
+    }
+    for (int i = 0; i < 3; i++) {
+        const int w = zones[i].x1 - zones[i].x0;
+        lcd_gfx_text_center(zones[i].x0, w, TOUCH_CTL_Y0 + (h - 2 * LCD_GLYPH_H) / 2,
+                            zones[i].label, 2, LCD_INK, LCD_PAPER);
+    }
+}
+
+/* Dải nhắc khi cảm ứng chưa được hiệu chuẩn: chạm có thể lệch vùng. */
+static void draw_uncal_banner(void)
+{
+    lcd_gfx_fill_rect(PAD, CAL_Y, INNER_W, CAL_H, LCD_RED);
+    lcd_gfx_text_center(PAD, INNER_W, CAL_Y + (CAL_H - LCD_GLYPH_H) / 2,
+                        "CHUA HIEU CHUAN", 1, LCD_PAPER, LCD_RED);
+}
+
 /* Dựng lại toàn bộ khung trong framebuffer rồi đẩy một lần. */
-static void render(const lcd_status_t *st, lcd_link_state_t link)
+static void render(const lcd_status_t *st, lcd_link_state_t link,
+                   uint8_t hold_pct, bool uncal)
 {
     lcd_gfx_reset_dropped();
     lcd_gfx_clear(LCD_PAPER);
@@ -276,6 +342,10 @@ static void render(const lcd_status_t *st, lcd_link_state_t link)
     draw_state(st);
     draw_speed(st);
     draw_alert(st->alert, st->features_off_mask);
+    if (uncal) {
+        draw_uncal_banner();
+    }
+    draw_controls(link, st->running, hold_pct);
     lcd_gfx_flush();
 
     const uint32_t dropped = lcd_gfx_dropped();
@@ -302,7 +372,10 @@ static bool changed(const lcd_status_t *a, const lcd_status_t *b)
 // loop must not paint over it. The menu sets this flag (under the
 // same lock) and draws via lcd_gfx directly; on exit it clears the
 // flag and forces a full repaint of the normal frame.
-static bool s_paused = false;
+// Touch-controls: the pause is now a COUNT, not a flag — the menu,
+// boot calibration and power standby can all hold the screen at once,
+// and the frame must only resume when the last holder releases it.
+static int s_pause_count = 0;
 
 void lcd_display_pause(void)
 {
@@ -310,7 +383,7 @@ void lcd_display_pause(void)
         return;
     }
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    s_paused = true;
+    s_pause_count++;
     xSemaphoreGive(s_lock);
 }
 
@@ -320,10 +393,14 @@ void lcd_display_resume(void)
         return;
     }
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    s_paused = false;
-    s_have_shown = false;  // force a full repaint of the normal frame
+    if (s_pause_count > 0) {
+        s_pause_count--;
+    }
+    if (s_pause_count == 0) {
+        s_have_shown = false;  // force a full repaint of the normal frame
+    }
     xSemaphoreGive(s_lock);
-    if (s_task != NULL) {
+    if (s_pause_count == 0 && s_task != NULL) {
         xTaskNotifyGive(s_task);
     }
 }
@@ -341,20 +418,25 @@ static void lcd_task(void *arg)
 
     while (1) {
         esp_task_wdt_reset();
-        if (s_paused) {
-            // Menu owns the screen: sleep, do not render.
+        if (s_pause_count > 0) {
+            // Menu / calibration / standby owns the screen: sleep, do not render.
             ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(200));
             continue;
         }
         lcd_status_t     st;
         lcd_link_state_t link;
+        uint8_t          hold_pct;
+        bool             uncal;
 
         xSemaphoreTake(s_lock, portMAX_DELAY);
-        st   = s_want;
-        link = s_want_link;
+        st       = s_want;
+        link     = s_want_link;
+        hold_pct = s_want_hold_pct;
+        uncal    = s_want_uncal;
         xSemaphoreGive(s_lock);
 
-        if (!s_have_shown || changed(&st, &s_shown) || link != s_shown_link) {
+        if (!s_have_shown || changed(&st, &s_shown) || link != s_shown_link ||
+            hold_pct != s_shown_hold_pct || uncal != s_shown_uncal) {
             pending     = true;
             last_change = now_ms();
         }
@@ -363,9 +445,11 @@ static void lcd_task(void *arg)
         if (pending
             && (!s_have_shown || t - last_change >= SETTLE_MS)
             && (t - last_refresh >= MIN_GAP_MS)) {
-            render(&st, link);
+            render(&st, link, hold_pct, uncal);
             s_shown      = st;
             s_shown_link = link;
+            s_shown_hold_pct = hold_pct;
+            s_shown_uncal    = uncal;
             s_have_shown = true;
             last_refresh = now_ms();
             pending      = false;
@@ -433,4 +517,31 @@ void lcd_display_set_status(const lcd_status_t *st)
 void lcd_display_backlight(bool on)
 {
     lcd_gfx_backlight(on);
+}
+
+/** Tiến trình giữ nút BAT (0..100) để vẽ đầy dần nút trong lúc giữ. */
+void lcd_display_set_power_hold(uint8_t pct)
+{
+    if (!s_task) {
+        return;
+    }
+    if (pct > 100) {
+        pct = 100;
+    }
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_want_hold_pct = pct;
+    xSemaphoreGive(s_lock);
+    xTaskNotifyGive(s_task);
+}
+
+/** Bật/tắt dải nhắc "CHUA HIEU CHUAN" trên màn chính. */
+void lcd_display_set_uncalibrated(bool uncal)
+{
+    if (!s_task) {
+        return;
+    }
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_want_uncal = uncal;
+    xSemaphoreGive(s_lock);
+    xTaskNotifyGive(s_task);
 }

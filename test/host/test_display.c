@@ -91,7 +91,7 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
                     .alert           = kAlerts[a],
                 };
                 for (int link = 0; link <= 2; link++) {
-                    render(&st, (lcd_link_state_t)link);
+                    render(&st, (lcd_link_state_t)link, 0, false);
                 }
             }
         }
@@ -106,13 +106,13 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
         lcd_status_t ok = {.running = true, .speed = 3,
                            .alert = TREADMILL_ALERT_NONE,
                            .features_off_mask = 0};
-        render(&ok, LCD_LINK_CONNECTED);
+        render(&ok, LCD_LINK_CONNECTED, 0, false);
         unsigned ok_filled = alert_filled();
 
         lcd_status_t warn = {.running = true, .speed = 3,
                              .alert = TREADMILL_ALERT_NONE,
                              .features_off_mask = 0x01};
-        render(&warn, LCD_LINK_CONNECTED);
+        render(&warn, LCD_LINK_CONNECTED, 0, false);
         unsigned warn_hash = band_hash(&kBands[3]);
         unsigned warn_filled = alert_filled();
         CHECK(warn_filled > ok_filled * 4,
@@ -121,7 +121,7 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
         lcd_status_t severe = {.running = true, .speed = 3,
                                .alert = TREADMILL_ALERT_DANGER,
                                .features_off_mask = 0x01};
-        render(&severe, LCD_LINK_CONNECTED);
+        render(&severe, LCD_LINK_CONNECTED, 0, false);
         CHECK(band_hash(&kBands[3]) != warn_hash,
               "alert nang phai thang dai canh bao tat tinh nang");
     }
@@ -131,7 +131,7 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
     {
         lcd_status_t st = {.running = true, .speed = 4};
         fp_reset();
-        render(&st, LCD_LINK_CONNECTED);
+        render(&st, LCD_LINK_CONNECTED, 0, false);
         CHECK_EQ(fp_frames, 1, "moi lan render phai gui tron mot khung");
         CHECK_EQ(fp_bytes, LCD_W * LCD_H * 2, "khung RGB565 day du");
     }
@@ -144,7 +144,7 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
             .requested_speed = 5, .zone = 2,
             .alert = TREADMILL_ALERT_NONE,
         };
-        render(&st, LCD_LINK_CONNECTED);
+        render(&st, LCD_LINK_CONNECTED, 0, false);
         for (int i = 0; i < BAND_COUNT; i++) {
             CHECK(fp_ink(0, kBands[i].y, LCD_W, kBands[i].h) > 0,
                   "dai '%s' khong ve gi ca", kBands[i].name);
@@ -157,7 +157,7 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
         lcd_status_t st = {0};
         unsigned sig[3];
         for (int i = 0; i < 3; i++) {
-            render(&st, (lcd_link_state_t)i);
+            render(&st, (lcd_link_state_t)i, 0, false);
             sig[i] = band_hash(&kBands[0]);
         }
         CHECK(sig[0] != sig[1] && sig[1] != sig[2] && sig[0] != sig[2],
@@ -170,11 +170,11 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
         lcd_status_t run  = {.running = true,  .speed = 5};
         lcd_status_t stop = {.running = false, .speed = 5};
 
-        render(&run, LCD_LINK_CONNECTED);
+        render(&run, LCD_LINK_CONNECTED, 0, false);
         const unsigned h_run = band_hash(&kBands[1]);
         const int      speed_ink_run = fp_ink(0, SP_Y, LCD_W, SP_H);
 
-        render(&stop, LCD_LINK_CONNECTED);
+        render(&stop, LCD_LINK_CONNECTED, 0, false);
         CHECK(band_hash(&kBands[1]) != h_run, "dai trang thai phai doi");
         CHECK(fp_ink(0, SP_Y, LCD_W, SP_H) != speed_ink_run,
               "dai toc do phai doi khi may dung");
@@ -213,7 +213,7 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
     {
         lcd_status_t st = {.running = true, .speed = 200};
         lcd_gfx_reset_dropped();
-        render(&st, LCD_LINK_CONNECTED);
+        render(&st, LCD_LINK_CONNECTED, 0, false);
         CHECK_EQ(fp_oob, 0, "level vuot tran gay ghi ra ngoai khung");
         CHECK_EQ(lcd_gfx_dropped(), 0, "level vuot tran lam mat chu");
     }
@@ -224,7 +224,7 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
         unsigned sig[ALERT_COUNT];
         for (int i = 0; i < ALERT_COUNT; i++) {
             lcd_status_t st = {.running = true, .speed = 3, .alert = kAlerts[i]};
-            render(&st, LCD_LINK_CONNECTED);
+            render(&st, LCD_LINK_CONNECTED, 0, false);
             sig[i] = band_hash(&kBands[3]);
             CHECK(alert_filled() > 0,
                   "alert %d ve ra o trong", (int)kAlerts[i]);
@@ -238,7 +238,7 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
         }
 
         lcd_status_t bad = {.running = true, .alert = (treadmill_alert_t)99};
-        render(&bad, LCD_LINK_CONNECTED);
+        render(&bad, LCD_LINK_CONNECTED, 0, false);
         CHECK(alert_filled() > 0,
               "alert la phai hien KHONG RO");
     }
@@ -249,12 +249,12 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
         /* Canh bao nang nhat = nen do dac: qua nua dai la mau do,
          * trong khi AN TOAN khong co pixel do nao. */
         lcd_status_t safe = {.running = true, .alert = TREADMILL_ALERT_NONE};
-        render(&safe, LCD_LINK_CONNECTED);
+        render(&safe, LCD_LINK_CONNECTED, 0, false);
         const int red_safe = fp_count(PAD, AL_Y, INNER_W, AL_H, LCD_RED);
         CHECK_EQ(red_safe, 0, "AN TOAN khong duoc co mau do");
 
         lcd_status_t danger = {.running = true, .alert = TREADMILL_ALERT_DANGER};
-        render(&danger, LCD_LINK_CONNECTED);
+        render(&danger, LCD_LINK_CONNECTED, 0, false);
         const int red_danger = fp_count(PAD, AL_Y, INNER_W, AL_H, LCD_RED);
         CHECK(red_danger > INNER_W * AL_H / 2,
               "NGUY HIEM phai nen do, chiem qua nua o (%d do)", red_danger);
@@ -269,11 +269,11 @@ TEST_MAIN_BEGIN("lcd_display (TFT)")
             .running = true, .speed = 5, .requested_speed = 8, .zone = 2,
             .safety_limited = false,
         };
-        render(&plain, LCD_LINK_CONNECTED);
+        render(&plain, LCD_LINK_CONNECTED, 0, false);
         const unsigned h_plain = band_hash(&kBands[2]);
 
         plain.safety_limited = true;
-        render(&plain, LCD_LINK_CONNECTED);
+        render(&plain, LCD_LINK_CONNECTED, 0, false);
         CHECK(band_hash(&kBands[2]) != h_plain,
               "co gioi han khong lam doi gi tren man");
     }

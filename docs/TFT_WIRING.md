@@ -45,6 +45,23 @@ chạy) công tắc tự về trạng thái cũ khi status mới về. Tắt m�
 năng → màn chính luôn hiện dải đỏ "CO TINH NANG / AN TOAN DANG TAT"
 cho tới khi bật lại.
 
+## Phase 1 touch controls + nút nguồn (branch feat/touch-controls-power-usb, CHƯA MERGE)
+
+Màn chính có thêm thanh điều khiển cảm ứng ở đáy (y 244–316, khớp đúng rect hit-test
+trong `main/touch/touch_controls_logic.h`): GIAM (x 3–79), BAT/TAT (x 82–158),
+TANG (x 161–237). Cử chỉ: giữ nút BAT 1,5 s để ON khi dừng (nút đầy xanh dần trong lúc
+giữ), chạm nút BAT để OFF ngay khi chạy, chạm GIAM/TANG đổi 1 bước (rate 300 ms trong
+ctrl); trượt ngón ra khỏi vùng giữa lúc giữ thì huỷ, phải nhả mới bấm lại được. Alert
+nghiêm trọng → vùng tốc độ chết, vùng nguồn vẫn sống để OFF. Lần đầu boot chưa có hiệu
+chuẩn → hiệu chuẩn 3 dấu + trước màn chính; bỏ qua 60 s → bản đồ mặc định + dải đỏ
+"CHUA HIEU CHUAN" trên màn chính.
+
+Phím cứng không còn điều khiển máy chạy: GPIO21 = nguồn (giữ 2 s = standby phần mềm:
+màn tắt + gửi OFF + chờ 300 ms + ngắt BLE; bấm = dậy + quét BLE lại), GPIO22/23 = DỪNG
+KHẨN CẤP (chạm = OFF tức thì, kể cả trong menu; trong standby thì máy đã dừng rồi nên
+không tác dụng). Nguồn USB giai đoạn này chưa cắt điện thật — xem
+`TOUCH_CONTROLS_POWER_DESIGN.md` mục 6.
+
 ## Cấu hình firmware
 - Driver IC: menuconfig → **Smartkey TFT Display → TFT panel driver IC**: mặc định **ILI9341** (module v1.3 phổ biến). Nếu flash xong màn trắng/đen bất thường hoặc màu sai hẳn, đổi sang **ST7789** — không sửa code.
 - Tốc độ SPI mặc định 40 MHz; dây dài/nhiễu thì hạ `TFT SPI clock` xuống 20 MHz trong cùng menu.

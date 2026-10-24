@@ -59,6 +59,12 @@ void lcd_display_resume(void);
 
 void lcd_display_backlight(bool on);
 
+/** Tiến trình giữ nút BAT (0..100) để vẽ đầy dần nút trong lúc giữ. */
+void lcd_display_set_power_hold(uint8_t pct);
+
+/** Bật/tắt dải nhắc "CHUA HIEU CHUAN" trên màn chính. */
+void lcd_display_set_uncalibrated(bool uncal);
+
 #ifdef __cplusplus
 }
 #endif

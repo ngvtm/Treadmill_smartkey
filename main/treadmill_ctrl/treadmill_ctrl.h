@@ -62,6 +62,11 @@ bool treadmill_ctrl_is_running(void);
  * ON). The touch menu reads it to paint its toggles; the display
  * reads it for the persistent safety-off warning. */
 uint8_t treadmill_ctrl_get_features_off_mask(void);
+/* True while the displayed alert is severe (DANGER / NO_PERSON /
+ * SAFETY_KEY_OUT / MOTOR_FAULT, incl. the 3 s hold window). The touch
+ * layer uses it to disable the speed zones (the power zone stays live
+ * for OFF); treadmill_ctrl itself already gates ON and speed. */
+bool treadmill_ctrl_is_severe_alert(void);
 
 #ifdef __cplusplus
 }
